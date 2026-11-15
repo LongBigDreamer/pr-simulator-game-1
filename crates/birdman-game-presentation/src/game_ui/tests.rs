@@ -5020,6 +5020,7 @@ fn screen_render_auto_projects_selection_applied_status_and_admission() {
         status: ScreenRenderAutoStatus::Unsupported {
             cause: "missing GPU timer".to_owned(),
         },
+        initial_observation_epoch: None,
     };
     platform.water_quality = WaterQuality::Low;
     for mode in [

@@ -3,7 +3,7 @@ use super::*;
 use birdman_game_presentation::{
     camera::Pose,
     game_ui::{GameUiControlInput, game_ui_boot_view},
-    screen_render_auto::ScreenRenderScope,
+    screen_render_auto::{ScreenRenderAutoSnapshot, ScreenRenderScope},
 };
 use url::Url;
 
@@ -115,6 +115,13 @@ impl ApplicationRuntime {
     pub fn local_application(&self) -> Option<&ApplicationSession> {
         match self.mode.as_ref().expect("runtime transition completed") {
             Mode::Local(local) => Some(local.application()),
+            _ => None,
+        }
+    }
+    /// Exposes the local graphics policy snapshot only for an explicitly local runtime and verification consumer.
+    pub fn local_screen_render_snapshot(&self) -> Option<ScreenRenderAutoSnapshot> {
+        match self.mode.as_ref().expect("runtime transition completed") {
+            Mode::Local(local) => Some(local.endpoint.graphics.snapshot()),
             _ => None,
         }
     }

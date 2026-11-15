@@ -169,6 +169,11 @@ pub struct ScreenRenderAutoSnapshot {
     pub water_quality: WaterQuality,
     /// Stable measurement or resource state.
     pub status: ScreenRenderAutoStatus,
+    /// Epoch of the first complete initial observation window, while that evidence remains fresh.
+    ///
+    /// Distinguishes initial measurement completion from the current window's
+    /// status, which returns to measuring while adaptation continues.
+    pub initial_observation_epoch: Option<u32>,
 }
 
 impl ScreenRenderAutoSnapshot {
@@ -185,6 +190,7 @@ impl ScreenRenderAutoSnapshot {
             shadow: ScreenShadowMap::Full,
             water_quality: WaterQuality::High,
             status: ScreenRenderAutoStatus::Manual,
+            initial_observation_epoch: None,
         }
     }
 }
@@ -538,6 +544,7 @@ impl ScreenRenderAutoController {
             shadow: self.applied.shadow,
             water_quality: self.applied.water_quality,
             status,
+            initial_observation_epoch: self.initial_observation_epoch(),
         }
     }
 
