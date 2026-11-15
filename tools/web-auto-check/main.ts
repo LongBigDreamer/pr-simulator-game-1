@@ -76,8 +76,23 @@ try {
   await click("game-setup-select-assistance-3");
   await click("game-setup-start");
   await click("game-briefing-start");
-  await control("game-flight-pause").waitFor();
-  await click("game-flight-pause");
+  await Promise.race([
+    control("game-flight-pause").waitFor(),
+    control("game-pause-open-settings").waitFor(),
+  ]);
+  if (await control("game-flight-pause").isVisible()) {
+    try {
+      await control("game-flight-pause").click({ timeout: 1000 });
+    } catch (cause) {
+      const settingsVisible = await control("game-pause-open-settings").isVisible().catch(() => false);
+      if (!settingsVisible) throw cause;
+      report.pausePreparation = { settingsVisible,
+        clickFailure: cause instanceof Error ? cause.message : String(cause) };
+    }
+  } else {
+    report.pausePreparation = { settingsVisible: true,
+      clickFailure: "The flight was already paused during preparation; the pause control never appeared" };
+  }
   await click("game-pause-open-settings");
   await click("presentation-water-quality-high");
   if (await control("presentation-render-scale-auto").getAttribute("aria-pressed") !== "true") {
