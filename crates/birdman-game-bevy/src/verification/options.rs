@@ -347,9 +347,7 @@ mod tests {
             assert_eq!(starts.len(), 5);
             for steps in starts {
                 if case.auto {
-                    assert!(
-                        matches!(steps[1], Check::Delay(duration) if duration == std::time::Duration::from_secs(5))
-                    );
+                    assert!(matches!(steps[1], Check::AutoInitialWindow));
                     assert!(matches!(steps[2], Check::Capture(_)));
                 } else {
                     assert!(matches!(steps[1], Check::Capture(_)));
