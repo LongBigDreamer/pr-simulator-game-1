@@ -1504,4 +1504,39 @@ mod tests {
             original_meshes
         );
     }
+
+    #[test]
+    fn terrain_materials_exclude_casting_and_retain_receiving() {
+        let exhibition = EnvironmentSelection::exhibition().unwrap();
+        let mut catalog = AssetCatalog::default();
+        let prepared = catalog
+            .prepare(
+                1,
+                exhibition,
+                &birdman_game_app::SelectedAircraft::bundled().unwrap(),
+                target(WaterQuality::High),
+            )
+            .unwrap();
+        let scene = &prepared.scene;
+        let terrain: Vec<_> = scene
+            .meshes
+            .iter()
+            .filter(|mesh| mesh.name.ends_with("-terrain"))
+            .collect();
+        assert!(!terrain.is_empty());
+        for mesh in &terrain {
+            assert_eq!(mesh.materials.len(), 1);
+            assert!(!mesh.materials[0].cast_shadow, "{}", mesh.name);
+            assert!(mesh.materials[0].receive_shadow, "{}", mesh.name);
+        }
+        let structures: Vec<_> = scene
+            .meshes
+            .iter()
+            .filter(|mesh| mesh.name.starts_with("structure-"))
+            .collect();
+        assert!(!structures.is_empty());
+        for mesh in &structures {
+            assert!(mesh.materials[0].cast_shadow, "{}", mesh.name);
+        }
+    }
 }

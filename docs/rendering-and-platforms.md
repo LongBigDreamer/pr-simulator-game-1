@@ -190,6 +190,7 @@ visibilityと実空間勾配の両channelがすべて厳密0の成分は、packe
 - Webは現在の共有姿勢・光源と全casterから影を先行生成し、反射と主描画で同じshadow mapを参照する。既存反射targetへの先行呼出しでは非casterを外し、casterの色段をゼロ頂点に抑え、例外時も描画状態を復元する。scene走査・program設定・ゼロ頂点commandの費用を伴う。
 
 NativeはDirectionalLightの選択した解像度・30〜600 mの3段cascadeから、水面の変位後world positionとgeometric normalへBevyのshadow samplingを適用する。影を有効にした場合、水面はshadow receiverとして描画する。
+登録broad/fine地形はWebと同じ非shadow casterとし、現在のshadow receiverを保持する。不透明な機体被覆・骨格とplatformのcaster、既存cascade・水面samplingは維持する。
 
 ### Adapterと資源交換
 
