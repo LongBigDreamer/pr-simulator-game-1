@@ -549,7 +549,6 @@ impl GeometryOwner {
             )?;
             owner.assets.meshes[mesh_index].color = Some(color);
             owner.assets.meshes[mesh_index].materials[0].cast_shadow = false;
-            owner.assets.meshes[mesh_index].materials[0].receive_shadow = false;
         }
         for mesh in source.shore_structures() {
             if mesh.positions_ned.is_empty() {
