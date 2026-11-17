@@ -43,7 +43,7 @@ function Read-Utf8Source {
 }
 
 $negativeDriver = Join-Path $repository 'proofs/rejections.rs'
-$negativeAssertions = @('initial_running', 'changed_on_failure', 'changed_at_contact')
+$negativeAssertions = @('initial_running', 'changed_on_failure', 'changed_at_contact', 'shifted')
 $proofInputs = @(
     $productToolchain, $negativeDriver, $PSCommandPath,
     (Join-Path $repository 'Cargo.lock'),
