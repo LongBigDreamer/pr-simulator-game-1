@@ -7,12 +7,12 @@ use crate::personal_best::validated_tail_personal_best_candidate;
 use crate::{DifficultySettings, FlightRecordIdentityMetadata};
 use alloc::{string::String, vec::Vec};
 use birdman_game_core::{
-    BodyVector, DistanceScore, FlightRecord, FlightRecordBoundaryEvent, FlightRecordControls,
-    FlightRecordFinalization, FlightRecordHeader, FlightRecordSample, FlightRecordTailInput,
-    FlightState, FlightTelemetry, NedPoint, NedVector, PersonalBestComparison,
-    SessionScenarioIdentity, TailFlightTickInput, TailIncidence, TailPilotIntent,
-    TailPilotPositionCommand, TailPilotPositionIntent, TailRateTarget, UnitQuaternion,
-    WingBendingFactor, Wrench, compare_personal_best,
+    BodyVector, DistanceScore, DragBreakdown, FlightRecord, FlightRecordBoundaryEvent,
+    FlightRecordControls, FlightRecordFinalization, FlightRecordHeader, FlightRecordSample,
+    FlightRecordTailInput, FlightState, FlightTelemetry, NedPoint, NedVector,
+    PersonalBestComparison, SessionScenarioIdentity, TailFlightTickInput, TailIncidence,
+    TailPilotIntent, TailPilotPositionCommand, TailPilotPositionIntent, TailRateTarget,
+    UnitQuaternion, WingBendingFactor, Wrench, compare_personal_best,
 };
 use serde::{Deserialize, Serialize};
 
@@ -54,6 +54,41 @@ impl TailWrenchDocument {
             BodyVector::try_new(mx, my, mz).map_err(|_| FlightRecordFormatError::InvalidRecord)?;
         Wrench::try_new(force, moment).map_err(|_| FlightRecordFormatError::InvalidRecord)
     }
+}
+
+/// Whole-aircraft drag decomposition in newtons at one published state.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct TailDragBreakdownDocument {
+    /// Induced drag in newtons.
+    pub induced_drag_n: f64,
+    /// Profile (non-induced) drag in newtons.
+    pub profile_drag_n: f64,
+}
+
+impl TailDragBreakdownDocument {
+    fn from_core(drag: DragBreakdown) -> Self {
+        Self {
+            induced_drag_n: drag.induced_newtons(),
+            profile_drag_n: drag.profile_newtons(),
+        }
+    }
+
+    fn to_core(self) -> Result<DragBreakdown, FlightRecordFormatError> {
+        DragBreakdown::try_new(self.induced_drag_n, self.profile_drag_n)
+            .map_err(|_| FlightRecordFormatError::InvalidRecord)
+    }
+}
+
+fn drag_from_core(value: Option<DragBreakdown>) -> Option<TailDragBreakdownDocument> {
+    value.map(TailDragBreakdownDocument::from_core)
+}
+
+fn drag_to_core(
+    value: Option<TailDragBreakdownDocument>,
+) -> Result<Option<DragBreakdown>, FlightRecordFormatError> {
+    value.map(TailDragBreakdownDocument::to_core).transpose()
 }
 
 fn wrenches_from_core(
@@ -113,6 +148,9 @@ pub struct TailFlightRecordBoundaryEventDocument {
     /// Horizontal and vertical tail loads, absent in older archives.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tail_wrenches: Option<[Option<TailWrenchDocument>; 2]>,
+    /// Whole-aircraft drag decomposition, absent in older archives.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drag_breakdown: Option<TailDragBreakdownDocument>,
 }
 
 impl TailFlightRecordBoundaryEventDocument {
@@ -122,6 +160,7 @@ impl TailFlightRecordBoundaryEventDocument {
             input: TailFlightRecordInputDocument::from_core(event.input),
             wing_bending_factor: event.wing_bending_factor.value(),
             tail_wrenches: wrenches_from_core(event.tail_wrenches),
+            drag_breakdown: drag_from_core(event.drag_breakdown),
         }
     }
 
@@ -132,6 +171,7 @@ impl TailFlightRecordBoundaryEventDocument {
             wing_bending_factor: WingBendingFactor::try_new(self.wing_bending_factor)
                 .map_err(|_| FlightRecordFormatError::InvalidRecord)?,
             tail_wrenches: wrenches_to_core(self.tail_wrenches)?,
+            drag_breakdown: drag_to_core(self.drag_breakdown)?,
         })
     }
 }
@@ -186,7 +226,7 @@ fn deserialize_terminal_failure<'de, Decoder: serde::Deserializer<'de>>(
 }
 
 /// Current archive schema with named two-tail controls.
-pub const TAIL_FLIGHT_RECORD_SCHEMA_VERSION: u32 = 11;
+pub const TAIL_FLIGHT_RECORD_SCHEMA_VERSION: u32 = 12;
 
 /// Explicit model/controller names; their independent versions remain in the common header.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -348,6 +388,9 @@ pub struct TailFlightRecordSampleDocument {
     /// Horizontal and vertical tail loads, absent in older archives.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tail_wrenches: Option<[Option<TailWrenchDocument>; 2]>,
+    /// Whole-aircraft drag decomposition, absent in older archives.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drag_breakdown: Option<TailDragBreakdownDocument>,
 }
 
 /// Finalized current archive with saved two-tail input and physical state.
@@ -564,7 +607,7 @@ impl TailFlightRecordDocument {
     pub fn to_finalized_core_record(&self) -> Result<FlightRecord, FlightRecordFormatError> {
         if !matches!(
             self.schema_version,
-            6 | 7 | 8 | 9 | 10 | TAIL_FLIGHT_RECORD_SCHEMA_VERSION
+            6 | 7 | 8 | 9 | 10 | 11 | TAIL_FLIGHT_RECORD_SCHEMA_VERSION
         ) {
             return Err(FlightRecordFormatError::UnsupportedSchemaVersion);
         }
@@ -606,6 +649,24 @@ impl TailFlightRecordDocument {
                         .finalization
                         .boundary_event
                         .is_some_and(|event| event.tail_wrenches.is_none())))
+            || (self.schema_version < 12
+                && (self
+                    .samples
+                    .iter()
+                    .any(|sample| sample.drag_breakdown.is_some())
+                    || self
+                        .finalization
+                        .boundary_event
+                        .is_some_and(|event| event.drag_breakdown.is_some())))
+            || (self.schema_version >= 12
+                && (self
+                    .samples
+                    .iter()
+                    .any(|sample| sample.drag_breakdown.is_none())
+                    || self
+                        .finalization
+                        .boundary_event
+                        .is_some_and(|event| event.drag_breakdown.is_none())))
         {
             return Err(FlightRecordFormatError::InvalidRecord);
         }
@@ -853,7 +914,7 @@ impl TailFlightRecordDocument {
             serde_json::from_slice(input).map_err(|_| FlightRecordFormatError::InvalidJson)?;
         if !matches!(
             version.schema_version,
-            6 | 7 | 8 | 9 | 10 | TAIL_FLIGHT_RECORD_SCHEMA_VERSION
+            6 | 7 | 8 | 9 | 10 | 11 | TAIL_FLIGHT_RECORD_SCHEMA_VERSION
         ) {
             return Err(FlightRecordFormatError::UnsupportedSchemaVersion);
         }
@@ -896,6 +957,7 @@ impl TailFlightRecordSampleDocument {
             fraction: sample.fraction,
             wing_bending_factor: sample.wing_bending_factor.map(WingBendingFactor::value),
             tail_wrenches: wrenches_from_core(sample.tail_wrenches),
+            drag_breakdown: drag_from_core(sample.drag_breakdown),
             state: FlightRecordStateDocument {
                 datum_position_ned_m: state.datum_position_ned().components(),
                 datum_velocity_ned_mps: state.datum_velocity_ned().components(),
@@ -947,6 +1009,7 @@ impl TailFlightRecordSampleDocument {
             tick_index: self.tick_index,
             fraction: self.fraction,
             tail_wrenches: wrenches_to_core(self.tail_wrenches)?,
+            drag_breakdown: drag_to_core(self.drag_breakdown)?,
             wing_bending_factor: self
                 .wing_bending_factor
                 .map(|factor| {

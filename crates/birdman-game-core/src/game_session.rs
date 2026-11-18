@@ -130,6 +130,13 @@ impl GameSessionConfiguration {
         self.scenario.initial_tail_wrenches()
     }
 
+    /// Returns the drag decomposition validated for the sealed launch state.
+    #[cfg_attr(verus_only, vstd::prelude::verus_verify(dual_spec))]
+    #[cfg_attr(verus_only, verus_spec(returns self.initial_drag_breakdown()))]
+    pub const fn initial_drag_breakdown(&self) -> crate::DragBreakdown {
+        self.scenario.initial_drag_breakdown()
+    }
+
     fn telemetry(
         &self,
         state: FlightState,

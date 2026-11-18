@@ -606,7 +606,10 @@ fn shortened_contact_search_retains_contact_errors_and_elapsed_time() {
                     contact_point_index: 0,
                     flight_state: state,
                 }),
-                [None; 2],
+                PublishedLoad {
+                    tail_wrenches: [None; 2],
+                    drag_breakdown: DragBreakdown::zero(),
+                },
             ))
         },
         original,
@@ -627,7 +630,14 @@ fn shortened_contact_search_retains_contact_errors_and_elapsed_time() {
                     if calls.get() > 1 {
                         return Err(failure);
                     }
-                    Ok((state, Some(contact), [None; 2]))
+                    Ok((
+                        state,
+                        Some(contact),
+                        PublishedLoad {
+                            tail_wrenches: [None; 2],
+                            drag_breakdown: DragBreakdown::zero(),
+                        },
+                    ))
                 },
                 original,
             ),
@@ -646,7 +656,10 @@ fn shortened_contact_search_retains_contact_errors_and_elapsed_time() {
                         contact_point_index: 0,
                         flight_state: state,
                     }),
-                    [None; 2],
+                    PublishedLoad {
+                        tail_wrenches: [None; 2],
+                        drag_breakdown: DragBreakdown::zero(),
+                    },
                 ))
             },
             original,

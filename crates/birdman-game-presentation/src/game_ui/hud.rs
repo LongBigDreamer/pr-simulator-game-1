@@ -117,6 +117,14 @@ pub(super) fn game_ui_hud(
                             sample.tick_index == state.tick_index() && sample.fraction == 0.0
                         })
                         .and_then(|sample| sample.tail_wrenches),
+                    drag_breakdown: context
+                        .session
+                        .flight_record()
+                        .and_then(|record| record.samples().last())
+                        .filter(|sample| {
+                            sample.tick_index == state.tick_index() && sample.fraction == 0.0
+                        })
+                        .and_then(|sample| sample.drag_breakdown),
                     telemetry,
                 },
                 distance,

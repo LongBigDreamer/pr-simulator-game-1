@@ -143,6 +143,7 @@ pub(super) fn encode(
     let version_nine = document.schema_version >= 9;
     let version_ten = document.schema_version >= 10;
     let version_eleven = document.schema_version >= 11;
+    let version_twelve = document.schema_version >= 12;
     let mut columns = COLUMNS.to_vec();
     if version_seven {
         columns.extend(["row_kind", "wing_bending_factor"]);
@@ -186,9 +187,14 @@ pub(super) fn encode(
             "external_obstruction_mask",
         ]);
     }
+    if version_twelve {
+        columns.extend(["induced_drag_n", "profile_drag_n"]);
+    }
     let header = &document.header;
     let mut metadata = vec![
-        if version_eleven {
+        if version_twelve {
+            "9"
+        } else if version_eleven {
             "8"
         } else if version_ten {
             "7"
@@ -527,6 +533,13 @@ pub(super) fn encode(
                 row.push(report.obstruction_mask.to_string());
             } else {
                 row.extend(core::iter::repeat_n(String::new(), 5));
+            }
+        }
+        if version_twelve {
+            if let Some(drag) = sample.drag_breakdown {
+                numbers(&mut row, [drag.induced_drag_n, drag.profile_drag_n]);
+            } else {
+                row.extend(core::iter::repeat_n(String::new(), 2));
             }
         }
         if row.len() != columns.len() {

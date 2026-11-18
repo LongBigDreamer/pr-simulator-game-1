@@ -1632,7 +1632,7 @@ export type GameUiResultTab = "summary" | "analysis";
 /**
  * Plot generated from the retained record.
  */
-export type GameUiAnalysisChart = "map" | "altitude" | "speed";
+export type GameUiAnalysisChart = "map" | "altitude" | "speed" | "attitude" | "angular_velocity" | "acceleration" | "flow_angles" | "tail_torque" | "input_history" | "center_of_gravity" | "drag_breakdown" | "kinetic_energy" | "energy_balance" | "energy_loss_rate" | "sink_and_glide" | "load_factor" | "wind";
 /**
  * Exclusive pause overlay.
  */

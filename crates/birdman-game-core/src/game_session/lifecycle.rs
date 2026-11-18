@@ -468,6 +468,7 @@ impl GameSession {
             initial,
             reading,
             Some(configuration.initial_tail_wrenches()),
+            Some(configuration.initial_drag_breakdown()),
         ) {
             return Err(GameSessionError::Record(error));
         }

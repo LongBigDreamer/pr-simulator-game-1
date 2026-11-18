@@ -1,8 +1,9 @@
 use std::sync::OnceLock;
 
 use birdman_game_core::{
-    FlightRecord, FlightRecordPlaybackSample, FlightRecordQueryError, FlightRecordSample, NedPoint,
-    WindError,
+    FlightEnergy, FlightRecord, FlightRecordPlaybackSample, FlightRecordQueryError,
+    FlightRecordSample, FlightState, FlightTelemetry, NedPoint, NedVector, TailControlReport,
+    TailPilotPositionCommand, WindError, flight_energy,
 };
 
 use super::{environment, types::*};
@@ -55,6 +56,7 @@ pub(super) fn record_chart(
     time: f64,
     extent: Option<GameUiChartExtent>,
     root_font_size: f64,
+    aircraft: Option<GameUiRecordAircraft>,
 ) -> Result<GameUiChart, GameUiError> {
     let samples = record.samples();
     let first = samples
@@ -145,6 +147,7 @@ pub(super) fn record_chart(
                 ));
             }
         }
+        _ => analysis_series_chart(&mut chart, record, kind, aircraft),
     }
     let cursor = data_cursor(
         "game-analysis-plot",
@@ -158,6 +161,8 @@ pub(super) fn record_chart(
         &chart.series,
         cursor,
         time,
+        record,
+        aircraft,
     );
     chart.cursor_x = cursor.cursor_x;
     chart.cursor_points = cursor.cursor_points;
@@ -572,6 +577,8 @@ pub(super) fn chart_cursor(
     plot: &GameUiChart,
     sample: FlightRecordPlaybackSample,
     time: f64,
+    record: &FlightRecord,
+    aircraft: Option<GameUiRecordAircraft>,
 ) -> GameUiChartCursor {
     let bounds = [
         plot.x_minimum,
@@ -584,9 +591,19 @@ pub(super) fn chart_cursor(
         plot.presentation.plot,
         plot.presentation.tick_font_size / BASE_TICK_FONT_PX,
     )
-    .cursor(data_cursor(id, kind, bounds, &plot.series, sample, time))
+    .cursor(data_cursor(
+        id,
+        kind,
+        bounds,
+        &plot.series,
+        sample,
+        time,
+        record,
+        aircraft,
+    ))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn data_cursor(
     id: &str,
     kind: GameUiAnalysisChart,
@@ -594,6 +611,8 @@ fn data_cursor(
     series: &[GameUiChartSeries],
     sample: FlightRecordPlaybackSample,
     time: f64,
+    record: &FlightRecord,
+    aircraft: Option<GameUiRecordAircraft>,
 ) -> ChartDataCursor {
     let mut cursor = ChartDataCursor {
         id: id.to_owned(),
@@ -647,8 +666,903 @@ fn data_cursor(
                 color: series[1].color.clone(),
             });
         }
+        _ => {
+            let values = analysis_cursor_values(kind, record, aircraft, &sample, time);
+            for (index, value) in values.into_iter().enumerate() {
+                if let (Some(value), Some(definition)) = (value, series.get(index)) {
+                    cursor.cursor_points.push(GameUiChartCursorPoint {
+                        point: point(time, value),
+                        color: definition.color.clone(),
+                    });
+                }
+            }
+        }
     }
     cursor
+}
+
+/// Whether a chart kind can be presented for a record and aircraft supply.
+///
+/// Charts that need a per-record diagnostic or the identified aircraft
+/// parameters are hidden when their data is absent, following the Analysis
+/// rule that additional quantities appear only for records carrying them.
+pub(super) fn analysis_chart_available(
+    kind: GameUiAnalysisChart,
+    record: Option<&FlightRecord>,
+    aircraft: Option<GameUiRecordAircraft>,
+) -> bool {
+    match kind {
+        GameUiAnalysisChart::TailTorque => record.is_some_and(|record| {
+            !record.samples().is_empty()
+                && record
+                    .samples()
+                    .iter()
+                    .all(|sample| sample.tail_wrenches.is_some())
+        }),
+        GameUiAnalysisChart::DragBreakdown => record.is_some_and(|record| {
+            !record.samples().is_empty()
+                && record
+                    .samples()
+                    .iter()
+                    .all(|sample| sample.drag_breakdown.is_some())
+        }),
+        GameUiAnalysisChart::KineticEnergy
+        | GameUiAnalysisChart::EnergyBalance
+        | GameUiAnalysisChart::EnergyLossRate => aircraft.is_some(),
+        GameUiAnalysisChart::LoadFactor => {
+            aircraft.is_some_and(|supply| supply.gravity.meters_per_second_squared() > 0.0)
+        }
+        _ => true,
+    }
+}
+
+/// One named value series over the retained samples; `None` leaves a gap.
+struct SeriesSpec {
+    label: &'static str,
+    color: &'static str,
+    values: Vec<Option<f64>>,
+}
+
+fn spec(label: &'static str, color: &'static str, values: Vec<Option<f64>>) -> SeriesSpec {
+    SeriesSpec {
+        label,
+        color,
+        values,
+    }
+}
+
+fn fill_series(
+    chart: &mut ChartData,
+    record: &FlightRecord,
+    y_axis_label: &str,
+    specs: Vec<SeriesSpec>,
+) {
+    chart.y_axis_label = y_axis_label.to_owned();
+    let values: Vec<f64> = specs
+        .iter()
+        .flat_map(|spec| spec.values.iter().filter_map(|value| *value))
+        .collect();
+    let range = if values.is_empty() {
+        [0.0, 1.0]
+    } else {
+        padded_range(values.into_iter())
+    };
+    chart.y_minimum = range[0];
+    chart.y_maximum = range[1];
+    for spec in specs {
+        chart.series.push(series(
+            spec.label,
+            spec.color,
+            record
+                .samples()
+                .iter()
+                .zip(spec.values)
+                .filter_map(|(sample, value)| {
+                    value.map(|value| point(sample_time(record, sample), value))
+                })
+                .collect(),
+        ));
+    }
+}
+
+/// Interpolates a per-sample derived quantity at an arbitrary record time,
+/// using the bracketing retained samples.
+fn derived_at(
+    record: &FlightRecord,
+    time: f64,
+    value: impl Fn(usize) -> Option<f64>,
+) -> Option<f64> {
+    let samples = record.samples();
+    if samples.is_empty() {
+        return None;
+    }
+    let times: Vec<f64> = samples
+        .iter()
+        .map(|sample| sample_time(record, sample))
+        .collect();
+    if time <= times[0] {
+        return value(0);
+    }
+    let last = samples.len() - 1;
+    if time >= times[last] {
+        return value(last);
+    }
+    let end = times.iter().position(|point| *point > time)?;
+    let start = end - 1;
+    let (first, second) = (value(start)?, value(end)?);
+    let span = times[end] - times[start];
+    if span <= 0.0 {
+        return Some(first);
+    }
+    Some(first + (second - first) * (time - times[start]) / span)
+}
+
+/// Removes ±π wraps from an angle series so continuous rotation stays
+/// continuous on the plot.
+fn unwrap_series(values: &[f64]) -> Vec<f64> {
+    let mut output = Vec::with_capacity(values.len());
+    let mut offset = 0.0;
+    let mut previous: Option<f64> = None;
+    for &value in values {
+        if let Some(previous) = previous {
+            let delta = value - previous;
+            if delta > core::f64::consts::PI {
+                offset -= 2.0 * core::f64::consts::PI;
+            } else if delta < -core::f64::consts::PI {
+                offset += 2.0 * core::f64::consts::PI;
+            }
+        }
+        output.push(value + offset);
+        previous = Some(value);
+    }
+    output
+}
+
+/// Shifts a wrapped angle by whole turns to sit next to its unwrapped
+/// series value at the same time.
+fn unwrap_adjust(value: f64, reference: f64) -> f64 {
+    value
+        + ((reference - value) / (2.0 * core::f64::consts::PI)).round()
+            * 2.0
+            * core::f64::consts::PI
+}
+
+/// Composite center-of-mass offset from datum O in body FRD axes.
+fn cg_offset_body(state: FlightState, telemetry: FlightTelemetry) -> Option<[f64; 3]> {
+    let cg = telemetry.composite_cg_position_ned_m.components();
+    let datum = state.datum_position_ned().components();
+    let delta = NedVector::try_new(cg[0] - datum[0], cg[1] - datum[1], cg[2] - datum[2]).ok()?;
+    state
+        .attitude_body_to_ned()
+        .ned_to_body(delta)
+        .ok()
+        .map(|vector| vector.components())
+}
+
+/// Mechanical energy of one state under the supplied aircraft parameters.
+fn energy_at(supply: GameUiRecordAircraft, state: &FlightState) -> Option<FlightEnergy> {
+    flight_energy(&supply.model, supply.gravity, state).ok()
+}
+
+/// Per-sample energies; empty when no aircraft supply is available.
+fn energy_series(
+    record: &FlightRecord,
+    aircraft: Option<GameUiRecordAircraft>,
+) -> Vec<Option<FlightEnergy>> {
+    match aircraft {
+        Some(supply) => record
+            .samples()
+            .iter()
+            .map(|sample| energy_at(supply, &sample.flight_state))
+            .collect(),
+        None => record.samples().iter().map(|_| None).collect(),
+    }
+}
+
+/// Per-sample load factors [body-z, magnitude] under the supplied gravity.
+fn load_factor_at(record: &FlightRecord, gravity: f64, index: usize) -> Option<[f64; 2]> {
+    if gravity <= 0.0 {
+        return None;
+    }
+    let estimate = record.acceleration_estimate(index)?;
+    let [ax, ay, az] = estimate.datum_acceleration_ned_mps2;
+    let specific = NedVector::try_new(ax, ay, az - gravity).ok()?;
+    let body = record
+        .samples()
+        .get(index)?
+        .flight_state
+        .attitude_body_to_ned()
+        .ned_to_body(specific)
+        .ok()?
+        .components();
+    let magnitude = (ax * ax + ay * ay + (az - gravity) * (az - gravity)).sqrt();
+    Some([-body[2] / gravity, magnitude / gravity])
+}
+
+/// Incidence target of one recorded input: the mixed builtin target, or the
+/// structural target of an external update.
+fn incidence_target(
+    input: birdman_game_core::FlightRecordTailInput,
+) -> Option<birdman_game_core::TailIncidence> {
+    match input.commands() {
+        TailControlReport::BuiltIn(commands) => Some(commands.mixed_incidence_target()),
+        TailControlReport::External(update) => Some(update.structural_target()),
+    }
+}
+
+fn analysis_series_chart(
+    chart: &mut ChartData,
+    record: &FlightRecord,
+    kind: GameUiAnalysisChart,
+    aircraft: Option<GameUiRecordAircraft>,
+) {
+    let samples = record.samples();
+    let column = |pick: &dyn Fn(&FlightRecordSample) -> Option<f64>| {
+        samples.iter().map(pick).collect::<Vec<_>>()
+    };
+    match kind {
+        GameUiAnalysisChart::Attitude => {
+            let rolls = unwrap_series(
+                &samples
+                    .iter()
+                    .map(|sample| sample.telemetry.roll_rad)
+                    .collect::<Vec<_>>(),
+            );
+            let headings = unwrap_series(
+                &samples
+                    .iter()
+                    .map(|sample| sample.telemetry.heading_rad)
+                    .collect::<Vec<_>>(),
+            );
+            fill_series(
+                chart,
+                record,
+                "角度 (rad)",
+                vec![
+                    spec("ロール角", "#70d6c8", rolls.into_iter().map(Some).collect()),
+                    spec(
+                        "ピッチ角",
+                        "#f2b35e",
+                        column(&|sample| Some(sample.telemetry.pitch_rad)),
+                    ),
+                    spec(
+                        "方位角",
+                        "#85c7e8",
+                        headings.into_iter().map(Some).collect(),
+                    ),
+                ],
+            );
+        }
+        GameUiAnalysisChart::AngularVelocity => {
+            let rates: Vec<[f64; 3]> = samples
+                .iter()
+                .map(|sample| sample.flight_state.angular_velocity_body().components())
+                .collect();
+            fill_series(
+                chart,
+                record,
+                "角速度 (rad/s)",
+                vec![
+                    spec(
+                        "ロール角速度 p",
+                        "#70d6c8",
+                        rates.iter().map(|rate| Some(rate[0])).collect(),
+                    ),
+                    spec(
+                        "ピッチ角速度 q",
+                        "#f2b35e",
+                        rates.iter().map(|rate| Some(rate[1])).collect(),
+                    ),
+                    spec(
+                        "ヨー角速度 r",
+                        "#85c7e8",
+                        rates.iter().map(|rate| Some(rate[2])).collect(),
+                    ),
+                ],
+            );
+        }
+        GameUiAnalysisChart::Acceleration => {
+            let estimates: Vec<_> = (0..samples.len())
+                .map(|index| record.acceleration_estimate(index))
+                .collect();
+            let pick = |axis: usize, angular: bool| {
+                estimates
+                    .iter()
+                    .map(|estimate| {
+                        estimate.map(|estimate| {
+                            if angular {
+                                estimate.angular_acceleration_body_rad_s2[axis]
+                            } else {
+                                estimate.datum_acceleration_ned_mps2[axis]
+                            }
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            };
+            fill_series(
+                chart,
+                record,
+                "加速度 (m/s²・rad/s²)",
+                vec![
+                    spec("線加速度 北", "#70d6c8", pick(0, false)),
+                    spec("線加速度 東", "#f2b35e", pick(1, false)),
+                    spec("線加速度 下", "#85c7e8", pick(2, false)),
+                    spec("角加速度 p", "#f29c78", pick(0, true)),
+                    spec("角加速度 q", "#c7eb72", pick(1, true)),
+                    spec("角加速度 r", "#d2a8ff", pick(2, true)),
+                ],
+            );
+        }
+        GameUiAnalysisChart::FlowAngles => {
+            fill_series(
+                chart,
+                record,
+                "角度 (rad)",
+                vec![
+                    spec(
+                        "迎え角",
+                        "#70d6c8",
+                        column(&|sample| sample.telemetry.angle_of_attack_rad),
+                    ),
+                    spec(
+                        "横滑り角",
+                        "#f2b35e",
+                        column(&|sample| sample.telemetry.sideslip_angle_rad),
+                    ),
+                ],
+            );
+        }
+        GameUiAnalysisChart::TailTorque => {
+            const LABELS: [[&str; 3]; 2] = [
+                [
+                    "水平尾翼 ロールモーメント",
+                    "水平尾翼 ピッチモーメント",
+                    "水平尾翼 ヨーモーメント",
+                ],
+                [
+                    "垂直尾翼 ロールモーメント",
+                    "垂直尾翼 ピッチモーメント",
+                    "垂直尾翼 ヨーモーメント",
+                ],
+            ];
+            const COLORS: [[&str; 3]; 2] = [
+                ["#70d6c8", "#85c7e8", "#c7eb72"],
+                ["#f2b35e", "#f29c78", "#d2a8ff"],
+            ];
+            let mut specs = Vec::new();
+            for tail in 0..2 {
+                for axis in 0..3 {
+                    specs.push(spec(
+                        LABELS[tail][axis],
+                        COLORS[tail][axis],
+                        column(&move |sample| {
+                            sample
+                                .tail_wrenches
+                                .and_then(|wrenches| wrenches[tail])
+                                .map(|wrench| {
+                                    wrench.moment_about_datum_newton_meters().components()[axis]
+                                })
+                        }),
+                    ));
+                }
+            }
+            fill_series(chart, record, "モーメント (N·m)", specs);
+        }
+        GameUiAnalysisChart::InputHistory => {
+            let mut position_command: Vec<Option<f64>> = Vec::with_capacity(samples.len());
+            let mut carried: Option<f64> = None;
+            for sample in samples {
+                if let Some(input) = sample.controls.input_from_previous
+                    && let TailPilotPositionCommand::Set(intent) = input.pilot_position_command()
+                {
+                    carried = Some(intent.value());
+                }
+                position_command.push(carried);
+            }
+            let target = |axis: usize| {
+                samples
+                    .iter()
+                    .map(|sample| {
+                        sample
+                            .controls
+                            .input_from_previous
+                            .and_then(incidence_target)
+                            .map(|incidence| {
+                                if axis == 0 {
+                                    incidence.elevator_rad()
+                                } else {
+                                    incidence.rudder_rad()
+                                }
+                            })
+                    })
+                    .collect::<Vec<_>>()
+            };
+            fill_series(
+                chart,
+                record,
+                "入力・指令",
+                vec![
+                    spec(
+                        "意図 nose-up",
+                        "#70d6c8",
+                        column(&|sample| {
+                            sample
+                                .controls
+                                .input_from_previous
+                                .map(|input| input.manual_intent().nose_up())
+                        }),
+                    ),
+                    spec(
+                        "意図 turn-right",
+                        "#85c7e8",
+                        column(&|sample| {
+                            sample
+                                .controls
+                                .input_from_previous
+                                .map(|input| input.manual_intent().turn_right())
+                        }),
+                    ),
+                    spec(
+                        "目標角速度 q",
+                        "#f2b35e",
+                        column(&|sample| {
+                            sample
+                                .controls
+                                .input_from_previous
+                                .map(|input| input.desired_body_rate().pitch_rad_per_second())
+                        }),
+                    ),
+                    spec(
+                        "目標角速度 r",
+                        "#ffa657",
+                        column(&|sample| {
+                            sample
+                                .controls
+                                .input_from_previous
+                                .map(|input| input.desired_body_rate().yaw_rad_per_second())
+                        }),
+                    ),
+                    spec("尾翼角目標 水平", "#c7eb72", target(0)),
+                    spec("尾翼角目標 垂直", "#7ee787", target(1)),
+                    spec(
+                        "実尾翼角 水平",
+                        "#f29c78",
+                        column(&|sample| Some(sample.controls.incidence.elevator_rad())),
+                    ),
+                    spec(
+                        "実尾翼角 垂直",
+                        "#ff7b72",
+                        column(&|sample| Some(sample.controls.incidence.rudder_rad())),
+                    ),
+                    spec("パイロット位置指令", "#d2a8ff", position_command),
+                ],
+            );
+        }
+        GameUiAnalysisChart::CenterOfGravity => {
+            let offsets: Vec<Option<[f64; 3]>> = samples
+                .iter()
+                .map(|sample| cg_offset_body(sample.flight_state, sample.telemetry))
+                .collect();
+            fill_series(
+                chart,
+                record,
+                "位置 (m)",
+                vec![
+                    spec(
+                        "重心オフセット x",
+                        "#70d6c8",
+                        offsets
+                            .iter()
+                            .map(|offset| offset.map(|value| value[0]))
+                            .collect(),
+                    ),
+                    spec(
+                        "重心オフセット y",
+                        "#f2b35e",
+                        offsets
+                            .iter()
+                            .map(|offset| offset.map(|value| value[1]))
+                            .collect(),
+                    ),
+                    spec(
+                        "重心オフセット z",
+                        "#85c7e8",
+                        offsets
+                            .iter()
+                            .map(|offset| offset.map(|value| value[2]))
+                            .collect(),
+                    ),
+                    spec(
+                        "パイロット位置",
+                        "#f29c78",
+                        column(&|sample| Some(sample.flight_state.pilot_position_m())),
+                    ),
+                ],
+            );
+        }
+        GameUiAnalysisChart::DragBreakdown => {
+            fill_series(
+                chart,
+                record,
+                "抗力 (N)",
+                vec![
+                    spec(
+                        "誘導抗力",
+                        "#f2b35e",
+                        column(&|sample| sample.drag_breakdown.map(|drag| drag.induced_newtons())),
+                    ),
+                    spec(
+                        "形状抗力",
+                        "#70d6c8",
+                        column(&|sample| sample.drag_breakdown.map(|drag| drag.profile_newtons())),
+                    ),
+                    spec(
+                        "抗力合計",
+                        "#e8e6df",
+                        column(&|sample| sample.drag_breakdown.map(|drag| drag.total_newtons())),
+                    ),
+                ],
+            );
+        }
+        GameUiAnalysisChart::KineticEnergy => {
+            let energies = energy_series(record, aircraft);
+            fill_series(
+                chart,
+                record,
+                "エネルギー (J)",
+                vec![spec(
+                    "運動エネルギー",
+                    "#70d6c8",
+                    energies
+                        .iter()
+                        .map(|energy| energy.map(|energy| energy.kinetic_j()))
+                        .collect(),
+                )],
+            );
+        }
+        GameUiAnalysisChart::EnergyBalance => {
+            let energies = energy_series(record, aircraft);
+            let initial_total = energies
+                .first()
+                .copied()
+                .flatten()
+                .map(|energy| energy.total_j());
+            fill_series(
+                chart,
+                record,
+                "エネルギー (J)",
+                vec![
+                    spec(
+                        "位置エネルギー",
+                        "#85c7e8",
+                        energies
+                            .iter()
+                            .map(|energy| energy.map(|energy| energy.potential_j()))
+                            .collect(),
+                    ),
+                    spec(
+                        "運動エネルギー",
+                        "#70d6c8",
+                        energies
+                            .iter()
+                            .map(|energy| energy.map(|energy| energy.kinetic_j()))
+                            .collect(),
+                    ),
+                    spec(
+                        "合計エネルギー",
+                        "#e8e6df",
+                        energies
+                            .iter()
+                            .map(|energy| energy.map(|energy| energy.total_j()))
+                            .collect(),
+                    ),
+                    spec(
+                        "累積損失",
+                        "#f29c78",
+                        energies
+                            .iter()
+                            .map(|energy| match (initial_total, energy) {
+                                (Some(initial), Some(energy)) => Some(initial - energy.total_j()),
+                                _ => None,
+                            })
+                            .collect(),
+                    ),
+                ],
+            );
+        }
+        GameUiAnalysisChart::EnergyLossRate => {
+            let energies = energy_series(record, aircraft);
+            let totals: Option<Vec<f64>> = energies
+                .iter()
+                .map(|energy| energy.map(|energy| energy.total_j()))
+                .collect();
+            let values: Vec<Option<f64>> = match &totals {
+                Some(totals) => (0..samples.len())
+                    .map(|index| record.series_derivative(totals, index).map(|rate| -rate))
+                    .collect(),
+                None => samples.iter().map(|_| None).collect(),
+            };
+            fill_series(
+                chart,
+                record,
+                "損失率 (W)",
+                vec![spec("エネルギー損失率", "#f2b35e", values)],
+            );
+        }
+        GameUiAnalysisChart::SinkAndGlide => {
+            fill_series(
+                chart,
+                record,
+                "沈降速度 (m/s)・滑空比",
+                vec![
+                    spec(
+                        "沈降速度",
+                        "#70d6c8",
+                        column(&|sample| {
+                            Some(sample.flight_state.datum_velocity_ned().components()[2])
+                        }),
+                    ),
+                    spec(
+                        "滑空比",
+                        "#f2b35e",
+                        column(&|sample| {
+                            let velocity = sample.flight_state.datum_velocity_ned().components();
+                            (velocity[2] > 0.05)
+                                .then(|| velocity[0].hypot(velocity[1]) / velocity[2])
+                        }),
+                    ),
+                ],
+            );
+        }
+        GameUiAnalysisChart::LoadFactor => {
+            let gravity = aircraft.map_or(0.0, |supply| supply.gravity.meters_per_second_squared());
+            let factors: Vec<Option<[f64; 2]>> = (0..samples.len())
+                .map(|index| load_factor_at(record, gravity, index))
+                .collect();
+            fill_series(
+                chart,
+                record,
+                "荷重倍数",
+                vec![
+                    spec(
+                        "荷重倍数（機体z軸）",
+                        "#70d6c8",
+                        factors
+                            .iter()
+                            .map(|factor| factor.map(|value| value[0]))
+                            .collect(),
+                    ),
+                    spec(
+                        "荷重倍数（大きさ）",
+                        "#f2b35e",
+                        factors
+                            .iter()
+                            .map(|factor| factor.map(|value| value[1]))
+                            .collect(),
+                    ),
+                ],
+            );
+        }
+        GameUiAnalysisChart::Wind => {
+            fill_series(
+                chart,
+                record,
+                "風速 (m/s)",
+                vec![
+                    spec(
+                        "北向きの風",
+                        "#70d6c8",
+                        column(&|sample| {
+                            Some(sample.telemetry.wind_velocity_ned_mps.components()[0])
+                        }),
+                    ),
+                    spec(
+                        "東向きの風",
+                        "#f2b35e",
+                        column(&|sample| {
+                            Some(sample.telemetry.wind_velocity_ned_mps.components()[1])
+                        }),
+                    ),
+                    spec(
+                        "下向きの風",
+                        "#85c7e8",
+                        column(&|sample| {
+                            Some(sample.telemetry.wind_velocity_ned_mps.components()[2])
+                        }),
+                    ),
+                ],
+            );
+        }
+        _ => {}
+    }
+}
+
+/// Cursor values for the series charts, aligned with the series order of
+/// [`analysis_series_chart`].
+fn analysis_cursor_values(
+    kind: GameUiAnalysisChart,
+    record: &FlightRecord,
+    aircraft: Option<GameUiRecordAircraft>,
+    sample: &FlightRecordPlaybackSample,
+    time: f64,
+) -> Vec<Option<f64>> {
+    match kind {
+        GameUiAnalysisChart::Attitude => {
+            let rolls = unwrap_series(
+                &record
+                    .samples()
+                    .iter()
+                    .map(|sample| sample.telemetry.roll_rad)
+                    .collect::<Vec<_>>(),
+            );
+            let headings = unwrap_series(
+                &record
+                    .samples()
+                    .iter()
+                    .map(|sample| sample.telemetry.heading_rad)
+                    .collect::<Vec<_>>(),
+            );
+            let adjust = |value: f64, series: &[f64]| {
+                derived_at(record, time, |index| series.get(index).copied())
+                    .map(|reference| unwrap_adjust(value, reference))
+                    .or(Some(value))
+            };
+            vec![
+                adjust(sample.telemetry.roll_rad, &rolls),
+                Some(sample.telemetry.pitch_rad),
+                adjust(sample.telemetry.heading_rad, &headings),
+            ]
+        }
+        GameUiAnalysisChart::AngularVelocity => sample
+            .flight_state
+            .angular_velocity_body()
+            .components()
+            .into_iter()
+            .map(Some)
+            .collect(),
+        GameUiAnalysisChart::Acceleration => {
+            let mut values = Vec::with_capacity(6);
+            for axis in 0..3 {
+                values.push(derived_at(record, time, |index| {
+                    record
+                        .acceleration_estimate(index)
+                        .map(|estimate| estimate.datum_acceleration_ned_mps2[axis])
+                }));
+            }
+            for axis in 0..3 {
+                values.push(derived_at(record, time, |index| {
+                    record
+                        .acceleration_estimate(index)
+                        .map(|estimate| estimate.angular_acceleration_body_rad_s2[axis])
+                }));
+            }
+            values
+        }
+        GameUiAnalysisChart::FlowAngles => vec![
+            sample.telemetry.angle_of_attack_rad,
+            sample.telemetry.sideslip_angle_rad,
+        ],
+        GameUiAnalysisChart::TailTorque => {
+            let mut values = Vec::with_capacity(6);
+            for tail in 0..2 {
+                for axis in 0..3 {
+                    values.push(
+                        sample
+                            .tail_wrenches
+                            .and_then(|wrenches| wrenches[tail])
+                            .map(|wrench| {
+                                wrench.moment_about_datum_newton_meters().components()[axis]
+                            }),
+                    );
+                }
+            }
+            values
+        }
+        GameUiAnalysisChart::InputHistory => {
+            let input = sample.input;
+            let target = input.and_then(incidence_target);
+            let mut position_command = None;
+            for stored in record.samples() {
+                if sample_time(record, stored) > time {
+                    break;
+                }
+                if let Some(stored_input) = stored.controls.input_from_previous
+                    && let TailPilotPositionCommand::Set(intent) =
+                        stored_input.pilot_position_command()
+                {
+                    position_command = Some(intent.value());
+                }
+            }
+            vec![
+                input.map(|input| input.manual_intent().nose_up()),
+                input.map(|input| input.manual_intent().turn_right()),
+                input.map(|input| input.desired_body_rate().pitch_rad_per_second()),
+                input.map(|input| input.desired_body_rate().yaw_rad_per_second()),
+                target.map(|incidence| incidence.elevator_rad()),
+                target.map(|incidence| incidence.rudder_rad()),
+                Some(sample.actuators.elevator_rad()),
+                Some(sample.actuators.rudder_rad()),
+                position_command,
+            ]
+        }
+        GameUiAnalysisChart::CenterOfGravity => {
+            let offset = cg_offset_body(sample.flight_state, sample.telemetry);
+            vec![
+                offset.map(|value| value[0]),
+                offset.map(|value| value[1]),
+                offset.map(|value| value[2]),
+                Some(sample.flight_state.pilot_position_m()),
+            ]
+        }
+        GameUiAnalysisChart::DragBreakdown => vec![
+            sample.drag_breakdown.map(|drag| drag.induced_newtons()),
+            sample.drag_breakdown.map(|drag| drag.profile_newtons()),
+            sample.drag_breakdown.map(|drag| drag.total_newtons()),
+        ],
+        GameUiAnalysisChart::KineticEnergy => {
+            vec![
+                aircraft
+                    .and_then(|supply| energy_at(supply, &sample.flight_state))
+                    .map(|energy| energy.kinetic_j()),
+            ]
+        }
+        GameUiAnalysisChart::EnergyBalance => {
+            let current = aircraft.and_then(|supply| energy_at(supply, &sample.flight_state));
+            let initial = aircraft.and_then(|supply| {
+                record
+                    .samples()
+                    .first()
+                    .and_then(|first| energy_at(supply, &first.flight_state))
+            });
+            vec![
+                current.map(|energy| energy.potential_j()),
+                current.map(|energy| energy.kinetic_j()),
+                current.map(|energy| energy.total_j()),
+                match (initial, current) {
+                    (Some(initial), Some(current)) => Some(initial.total_j() - current.total_j()),
+                    _ => None,
+                },
+            ]
+        }
+        GameUiAnalysisChart::EnergyLossRate => {
+            let energies = energy_series(record, aircraft);
+            let totals: Option<Vec<f64>> = energies
+                .iter()
+                .map(|energy| energy.map(|energy| energy.total_j()))
+                .collect();
+            vec![match &totals {
+                Some(totals) => derived_at(record, time, |index| {
+                    record.series_derivative(totals, index).map(|rate| -rate)
+                }),
+                None => None,
+            }]
+        }
+        GameUiAnalysisChart::SinkAndGlide => {
+            let velocity = sample.flight_state.datum_velocity_ned().components();
+            vec![
+                Some(velocity[2]),
+                (velocity[2] > 0.05).then(|| velocity[0].hypot(velocity[1]) / velocity[2]),
+            ]
+        }
+        GameUiAnalysisChart::LoadFactor => {
+            let gravity = aircraft.map_or(0.0, |supply| supply.gravity.meters_per_second_squared());
+            let factor = derived_at(record, time, |index| {
+                load_factor_at(record, gravity, index).map(|value| value[0])
+            });
+            let magnitude = derived_at(record, time, |index| {
+                load_factor_at(record, gravity, index).map(|value| value[1])
+            });
+            vec![factor, magnitude]
+        }
+        GameUiAnalysisChart::Wind => sample
+            .telemetry
+            .wind_velocity_ned_mps
+            .components()
+            .into_iter()
+            .map(Some)
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 fn map_chart(chart: &mut ChartData, record: &FlightRecord) -> Result<(), GameUiError> {
