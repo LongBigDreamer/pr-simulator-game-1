@@ -1338,7 +1338,10 @@ fn hitl_accepted_timeout_retains_last_boundary_first_fault_and_unranked_record()
             boundary.flight_state()
         );
         let document = application.flight_record_document().unwrap();
-        assert_eq!(document.schema_version, 11);
+        assert_eq!(
+            document.schema_version,
+            birdman_game_format::TAIL_FLIGHT_RECORD_SCHEMA_VERSION
+        );
         assert_eq!(document.controller_fault.as_ref(), Some(&fault));
         assert!(
             !document

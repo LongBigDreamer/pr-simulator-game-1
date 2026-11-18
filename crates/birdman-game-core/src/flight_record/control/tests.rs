@@ -208,7 +208,7 @@ fn boundary_record(at_initial_time: bool) -> (crate::FlightRecord, crate::TailWa
         .with_wing_bending_factor(WingBendingFactor::try_new(0.01).unwrap());
     let mut record = crate::FlightRecord::try_new(header()).unwrap();
     record
-        .begin_tail(initial, telemetry(initial.flight_state()), None)
+        .begin_tail(initial, telemetry(initial.flight_state()), None, None)
         .unwrap();
     let previous = if at_initial_time {
         initial
@@ -324,7 +324,7 @@ fn restored_boundary_events_validate_time_recorded_shape_and_terminal_cause() {
     let previous =
         initial(-10.5).with_wing_bending_factor(WingBendingFactor::try_new(0.01).unwrap());
     maximum_record
-        .begin_tail(previous, telemetry(previous.flight_state()), None)
+        .begin_tail(previous, telemetry(previous.flight_state()), None, None)
         .unwrap();
     let advanced = deforming_report(previous, 1.0);
     let TailFlightTickOutcome::Advanced(next) = advanced.outcome() else {
@@ -423,7 +423,7 @@ fn tail_record_uses_existing_query_and_restores_without_control_reintegration() 
     let mut record = crate::FlightRecord::try_new(header()).unwrap();
     let initial = initial(-10.5);
     record
-        .begin_tail(initial, telemetry(initial.flight_state()), None)
+        .begin_tail(initial, telemetry(initial.flight_state()), None, None)
         .unwrap();
     let report = report(
         ControlMode::Shared(FbwAuthority::try_new(0.5).unwrap()),
@@ -495,7 +495,7 @@ fn tail_record_positive_and_zero_contact_follow_the_same_terminal_sampling_contr
         let mut record = crate::FlightRecord::try_new(header()).unwrap();
         let initial = initial(down);
         record
-            .begin_tail(initial, telemetry(initial.flight_state()), None)
+            .begin_tail(initial, telemetry(initial.flight_state()), None, None)
             .unwrap();
         let report = report(ControlMode::Manual, down);
         let TailFlightTickOutcome::WaterContact(terminal) = report.outcome() else {
@@ -540,7 +540,7 @@ fn missing_input_and_duplicate_tail_reports_leave_record_unchanged() {
     let mut record = crate::FlightRecord::try_new(header()).unwrap();
     let initial = initial(-10.5);
     record
-        .begin_tail(initial, telemetry(initial.flight_state()), None)
+        .begin_tail(initial, telemetry(initial.flight_state()), None, None)
         .unwrap();
     let report = report(ControlMode::Manual, -10.5);
     let TailFlightTickOutcome::Advanced(next) = report.outcome() else {
@@ -576,7 +576,7 @@ fn failure_finalization_preserves_original_stage_site_and_last_valid_sample() {
     let mut record = FlightRecord::try_new(header()).unwrap();
     let initial = initial(-10.5);
     record
-        .begin_tail(initial, telemetry(initial.flight_state()), None)
+        .begin_tail(initial, telemetry(initial.flight_state()), None, None)
         .unwrap();
     let site = HybridSite::Proxy {
         surface: HybridSurfaceRole::MainWing,
@@ -657,7 +657,7 @@ fn incompatible_failure_reason_layout_and_stamp_leave_record_unfinalized() {
     let mut record = FlightRecord::try_new(header()).unwrap();
     let initial = initial(-10.5);
     record
-        .begin_tail(initial, telemetry(initial.flight_state()), None)
+        .begin_tail(initial, telemetry(initial.flight_state()), None, None)
         .unwrap();
     let failure = TailFlightTickError::TickOverflow;
     for (reason, tick, cause, expected) in [
@@ -900,7 +900,7 @@ fn public_record_operations_preserve_telemetry_finite_domain_and_rejection_state
             let accepted = value.is_finite() && !((field == 1 || field == 2) && value < 0.0);
             let mut record = crate::FlightRecord::try_new(header()).unwrap();
             let capacity = record.sample_capacity;
-            let begun = record.begin_tail(initial, supplied, None);
+            let begun = record.begin_tail(initial, supplied, None, None);
             assert_eq!(
                 begun.is_ok(),
                 accepted,
@@ -914,7 +914,7 @@ fn public_record_operations_preserve_telemetry_finite_domain_and_rejection_state
                 assert_eq!(record.sample_capacity, capacity);
                 assert_eq!(record.finalization(), None);
                 record
-                    .begin_tail(initial, telemetry(initial.flight_state()), None)
+                    .begin_tail(initial, telemetry(initial.flight_state()), None, None)
                     .unwrap();
             }
             let before = record.samples().to_vec();
@@ -947,11 +947,11 @@ fn lifecycle_and_time_rejections_precede_telemetry_even_without_elapsed_interval
     let mut invalid = telemetry(airborne.flight_state());
     invalid.angle_of_attack_rad = Some(f64::NAN);
     assert_eq!(
-        timed_record.begin_tail(next, invalid, None),
+        timed_record.begin_tail(next, invalid, None, None),
         Err(crate::FlightRecordError::InvalidHeader)
     );
     timed_record
-        .begin_tail(airborne, telemetry(airborne.flight_state()), None)
+        .begin_tail(airborne, telemetry(airborne.flight_state()), None, None)
         .unwrap();
     timed_record
         .append_tail_report(advanced, telemetry(next.flight_state()))
@@ -973,11 +973,11 @@ fn lifecycle_and_time_rejections_precede_telemetry_even_without_elapsed_interval
         Err(crate::FlightRecordError::NotStarted)
     );
     record
-        .begin_tail(initial, telemetry(initial.flight_state()), None)
+        .begin_tail(initial, telemetry(initial.flight_state()), None, None)
         .unwrap();
     let before = record.samples().to_vec();
     assert_eq!(
-        record.begin_tail(initial, invalid, None),
+        record.begin_tail(initial, invalid, None, None),
         Err(crate::FlightRecordError::AlreadyStarted)
     );
     assert_eq!(

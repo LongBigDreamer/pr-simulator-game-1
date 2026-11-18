@@ -1,7 +1,7 @@
 use crate::{
     AircraftModel, BodyPoint, BodyVector, ConstantLoad, DynamicsError, ExternalLoadProvider,
     FlightState, Gravity, InertiaTensor, LoadError, MathError, NedPoint, NedVector, PHYSICS_HZ,
-    PilotAcceleration, PilotPositionTarget, UnitQuaternion, Wrench, advance,
+    PilotAcceleration, PilotPositionTarget, UnitQuaternion, Wrench, advance, flight_energy,
     pilot_target_acceleration, total_momentum,
 };
 
@@ -1584,4 +1584,47 @@ fn a_load_failure_propagates_without_publishing_a_partial_state() {
         0.01,
     );
     assert_eq!(result, Err(DynamicsError::Load(LoadError::OutsideDomain)));
+}
+
+#[test]
+fn flight_energy_matches_two_body_analytic_values() {
+    let model = model(1.0, diagonal_inertia(2.0, 3.0, 4.0));
+    let gravity = Gravity::try_new(10.0).unwrap();
+    let rest = state(
+        [0.0, 0.0, -10.0],
+        [0.0; 3],
+        UnitQuaternion::IDENTITY,
+        [0.0; 3],
+        0.3,
+        0.0,
+    );
+    let energy = flight_energy(&model, gravity, &rest).unwrap();
+    assert_eq!(energy.kinetic_j(), 0.0);
+    // Airframe center is 10 m above the plane; the pilot rides 0.2 m higher.
+    assert!((energy.potential_j() - 10.0 * (4.0 * 10.0 + 10.2)).abs() <= 1e-9);
+    assert!((energy.total_j() - energy.potential_j()).abs() <= 1e-12);
+
+    let translating = state(
+        [0.0, 0.0, -10.0],
+        [3.0, 4.0, 0.0],
+        UnitQuaternion::IDENTITY,
+        [0.0; 3],
+        0.3,
+        0.0,
+    );
+    let energy = flight_energy(&model, gravity, &translating).unwrap();
+    assert!((energy.kinetic_j() - 0.5 * 5.0 * 25.0).abs() <= 1e-9);
+
+    let yawing = state(
+        [0.0, 0.0, -10.0],
+        [0.0; 3],
+        UnitQuaternion::IDENTITY,
+        [0.0, 0.0, 2.0],
+        0.3,
+        0.0,
+    );
+    let energy = flight_energy(&model, gravity, &yawing).unwrap();
+    // Airframe rotation about its own center: 1/2 * 4 * 2^2 = 8 J.
+    // Pilot at body x 0.3 m under yaw rate 2 rad/s: 1/2 * 1 * 0.6^2 = 0.18 J.
+    assert!((energy.kinetic_j() - 8.18).abs() <= 1e-9);
 }

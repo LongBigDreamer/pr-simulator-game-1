@@ -3,6 +3,7 @@ use crate::{
     BodyVector, NedPoint, NedVector, TailFlightTickInput, TailPilotIntent,
     TailPilotPositionCommand, TailRateTarget, UnitQuaternion,
 };
+use alloc::vec;
 
 fn header(maximum_flight_ticks: u64) -> FlightRecordHeader {
     FlightRecordHeader::try_new(
@@ -66,6 +67,7 @@ fn sample(
         flight_state: state,
         wing_bending_factor: None,
         tail_wrenches: None,
+        drag_breakdown: None,
         controls: FlightRecordControls {
             incidence: TailIncidence::try_new(incidence, -incidence).unwrap(),
             input_from_previous,
@@ -381,4 +383,104 @@ fn public_finalization_preserves_fraction_endpoints_and_failure_priority() {
         Err(FlightRecordError::AlreadyFinalized)
     );
     assert_eq!(record.finalization(), Some(metadata));
+}
+
+fn velocity_sample(
+    tick_index: u64,
+    velocity_ned: [f64; 3],
+    angular_velocity: [f64; 3],
+    pilot_velocity: f64,
+) -> FlightRecordSample {
+    let position = NedPoint::try_new(0.0, 0.0, -10.0).unwrap();
+    let state = FlightState::try_new(
+        position,
+        NedVector::try_new(velocity_ned[0], velocity_ned[1], velocity_ned[2]).unwrap(),
+        UnitQuaternion::IDENTITY,
+        BodyVector::try_new(
+            angular_velocity[0],
+            angular_velocity[1],
+            angular_velocity[2],
+        )
+        .unwrap(),
+        0.0,
+        pilot_velocity,
+    )
+    .unwrap();
+    FlightRecordSample {
+        tick_index,
+        fraction: 0.0,
+        flight_state: state,
+        wing_bending_factor: None,
+        tail_wrenches: None,
+        drag_breakdown: None,
+        controls: FlightRecordControls {
+            incidence: TailIncidence::neutral(),
+            input_from_previous: (tick_index > 0).then(|| {
+                FlightRecordTailInput::try_from_recorded(
+                    TailFlightTickInput::new(
+                        TailPilotIntent::try_new(0.0, 0.0).unwrap(),
+                        TailRateTarget::try_new(0.0, 0.0).unwrap(),
+                        TailPilotPositionCommand::Hold,
+                    ),
+                    0.0,
+                    TailIncidence::neutral(),
+                    TailIncidence::neutral(),
+                    TailIncidence::neutral(),
+                )
+                .unwrap()
+            }),
+        },
+        wind_at_cg_ned_mps: NedVector::zero(),
+        telemetry: FlightTelemetry {
+            composite_cg_position_ned_m: position,
+            altitude_m: 10.0,
+            airspeed_mps: 10.0,
+            groundspeed_mps: 10.0,
+            wind_velocity_ned_mps: NedVector::zero(),
+            angle_of_attack_rad: None,
+            sideslip_angle_rad: None,
+            roll_rad: 0.0,
+            pitch_rad: 0.0,
+            heading_rad: 0.0,
+        },
+    }
+}
+
+#[test]
+fn acceleration_estimate_matches_the_csv_stencil() {
+    // v_north(t) = 10 + 2t + 3t^2, omega_q(t) = t^2, pilot velocity 5t.
+    let samples: Vec<_> = (0..5)
+        .map(|tick| {
+            let t = tick as f64 / 100.0;
+            velocity_sample(
+                tick,
+                [10.0 + 2.0 * t + 3.0 * t * t, 0.0, 0.0],
+                [0.0, t * t, 0.0],
+                5.0 * t,
+            )
+        })
+        .collect();
+    let record = finalized(samples).unwrap();
+    // Interior three-point differences are exact for quadratics.
+    let middle = record.acceleration_estimate(2).unwrap();
+    assert!((middle.datum_acceleration_ned_mps2[0] - 2.12).abs() <= 1e-9);
+    assert!((middle.angular_acceleration_body_rad_s2[1] - 0.04).abs() <= 1e-9);
+    assert!((middle.pilot_acceleration_mps2 - 5.0).abs() <= 1e-9);
+    // Ends use one-sided secants: (v(h) - v(0)) / h = 2 + 3h.
+    let first = record.acceleration_estimate(0).unwrap();
+    assert!((first.datum_acceleration_ned_mps2[0] - 2.03).abs() <= 1e-9);
+    let last = record.acceleration_estimate(4).unwrap();
+    assert!((last.datum_acceleration_ned_mps2[0] - 2.21).abs() <= 1e-9);
+    assert_eq!(record.acceleration_estimate(5), None);
+    // Series derivative shares the stencil and validates its input length.
+    let squares: Vec<f64> = (0..5)
+        .map(|tick| {
+            let t = tick as f64 / 100.0;
+            t * t
+        })
+        .collect();
+    assert!((record.series_derivative(&squares, 2).unwrap() - 0.04).abs() <= 1e-9);
+    assert_eq!(record.series_derivative(&squares[..4], 2), None);
+    let single = finalized(vec![velocity_sample(0, [0.0; 3], [0.0; 3], 0.0)]).unwrap();
+    assert_eq!(single.acceleration_estimate(0), None);
 }

@@ -2,7 +2,9 @@ use crate::math::{BodyVector, NedPoint, NedVector};
 use crate::scenario::FlightTelemetry;
 use crate::scoring::DistanceScore;
 use crate::session_contract::{SessionEndReason, SessionScenarioIdentity};
-use crate::{FlightState, TailFlightTickError, TailIncidence, WingBendingFactor, Wrench};
+use crate::{
+    DragBreakdown, FlightState, TailFlightTickError, TailIncidence, WingBendingFactor, Wrench,
+};
 use alloc::vec::Vec;
 
 #[cfg(verus_only)]
@@ -100,6 +102,8 @@ pub struct FlightRecordSample {
     pub wing_bending_factor: Option<WingBendingFactor>,
     /// Accepted horizontal and vertical tail wrenches, or absence in an older archive.
     pub tail_wrenches: Option<[Option<Wrench>; 2]>,
+    /// Whole-aircraft drag decomposition at the published state, or absence in an older archive.
+    pub drag_breakdown: Option<DragBreakdown>,
     /// Composite-center ambient wind in NED axes.
     pub wind_at_cg_ned_mps: NedVector,
     /// Derived telemetry retained for presentation and analysis.
@@ -156,6 +160,8 @@ pub struct FlightRecordPlaybackSample {
     pub wing_bending_factor: Option<WingBendingFactor>,
     /// Most recently accepted horizontal and vertical tail wrenches.
     pub tail_wrenches: Option<[Option<Wrench>; 2]>,
+    /// Drag decomposition held from the interval's starting sample.
+    pub drag_breakdown: Option<DragBreakdown>,
     /// Interpolated wind and telemetry values.
     pub telemetry: FlightTelemetry,
 }
@@ -179,6 +185,20 @@ pub struct FlightRecordSummary {
     pub maximum_absolute_roll_rad: f64,
     /// Finalized course-relative score, if scoring succeeded.
     pub score: Option<DistanceScore>,
+}
+
+/// Velocity-difference acceleration estimate at one retained sample.
+///
+/// Accelerations are not simulated state; they are derived from the recorded
+/// velocity series with the same stencil as the CSV export estimate.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FlightRecordAcceleration {
+    /// Datum linear acceleration in NED axes, in m/s².
+    pub datum_acceleration_ned_mps2: [f64; 3],
+    /// Body angular acceleration about the body axes, in rad/s².
+    pub angular_acceleration_body_rad_s2: [f64; 3],
+    /// Pilot acceleration along the airframe longitudinal axis, in m/s².
+    pub pilot_acceleration_mps2: f64,
 }
 
 /// Failure while querying or deriving values from a flight record.
@@ -430,6 +450,7 @@ impl FlightRecord {
                             controls: FlightRecordControls::initial_tail(initial),
                             wing_bending_factor: initial.wing_bending_factor(),
                             tail_wrenches,
+                            drag_breakdown,
                             wind_at_cg_ned_mps: telemetry.wind_velocity_ned_mps,
                             telemetry,
                         }),
@@ -449,6 +470,7 @@ impl FlightRecord {
         initial: crate::TailFlightTickState,
         telemetry: FlightTelemetry,
         tail_wrenches: Option<[Option<Wrench>; 2]>,
+        drag_breakdown: Option<DragBreakdown>,
     ) -> Result<(), FlightRecordError> {
         if !self.samples.is_empty() || self.finalization.is_some() {
             return Err(FlightRecordError::AlreadyStarted);
@@ -464,6 +486,7 @@ impl FlightRecord {
             controls: FlightRecordControls::initial_tail(initial),
             wing_bending_factor: initial.wing_bending_factor(),
             tail_wrenches,
+            drag_breakdown,
             wind_at_cg_ned_mps: telemetry.wind_velocity_ned_mps,
             telemetry,
         })
@@ -513,6 +536,7 @@ impl FlightRecord {
                                         crate::TailFlightTickOutcome::WaterContact(sample) => sample.wing_bending_factor(),
                                     },
                                     tail_wrenches: Some(report.tail_wrenches()),
+                                    drag_breakdown: report.drag_breakdown(),
                                     wind_at_cg_ned_mps: telemetry.wind_velocity_ned_mps,
                                     telemetry,
                                 })
@@ -594,6 +618,7 @@ impl FlightRecord {
                 crate::TailFlightTickOutcome::WaterContact(sample) => sample.wing_bending_factor(),
             },
             tail_wrenches: Some(report.tail_wrenches()),
+            drag_breakdown: report.drag_breakdown(),
             wind_at_cg_ned_mps: telemetry.wind_velocity_ned_mps,
             telemetry,
         })
@@ -993,6 +1018,71 @@ impl FlightRecord {
         })
     }
 
+    /// Estimates accelerations at one retained sample by differentiating the
+    /// recorded velocity series.
+    ///
+    /// Interior samples use the nonuniform three-point central difference and
+    /// the ends use one-sided two-point differences, matching the CSV export
+    /// estimate. Returns `None` when the record holds fewer than two samples
+    /// or a neighboring interval is degenerate.
+    pub fn acceleration_estimate(&self, index: usize) -> Option<FlightRecordAcceleration> {
+        if index >= self.samples.len() {
+            return None;
+        }
+        let axis = |series: &[[f64; 3]], axis: usize| {
+            let values: Vec<f64> = series.iter().map(|value| value[axis]).collect();
+            self.series_derivative(&values, index)
+        };
+        let datum_velocity: Vec<[f64; 3]> = self
+            .samples
+            .iter()
+            .map(|sample| sample.flight_state.datum_velocity_ned().components())
+            .collect();
+        let angular_velocity: Vec<[f64; 3]> = self
+            .samples
+            .iter()
+            .map(|sample| sample.flight_state.angular_velocity_body().components())
+            .collect();
+        let pilot_velocity: Vec<f64> = self
+            .samples
+            .iter()
+            .map(|sample| sample.flight_state.pilot_velocity_mps())
+            .collect();
+        Some(FlightRecordAcceleration {
+            datum_acceleration_ned_mps2: [
+                axis(&datum_velocity, 0)?,
+                axis(&datum_velocity, 1)?,
+                axis(&datum_velocity, 2)?,
+            ],
+            angular_acceleration_body_rad_s2: [
+                axis(&angular_velocity, 0)?,
+                axis(&angular_velocity, 1)?,
+                axis(&angular_velocity, 2)?,
+            ],
+            pilot_acceleration_mps2: self.series_derivative(&pilot_velocity, index)?,
+        })
+    }
+
+    /// Differentiates a per-sample scalar series at one sample.
+    ///
+    /// The series must hold exactly one value per retained sample. The
+    /// stencil matches [`Self::acceleration_estimate`]: nonuniform three-point
+    /// central differences inside, one-sided two-point differences at the
+    /// ends, and `None` for degenerate intervals.
+    pub fn series_derivative(&self, values: &[f64], index: usize) -> Option<f64> {
+        if values.len() != self.samples.len() || values.len() < 2 {
+            return None;
+        }
+        let times: Vec<f64> = self
+            .samples
+            .iter()
+            .map(|sample| {
+                (sample.tick_index as f64 + sample.fraction) / f64::from(self.header.physics_hz)
+            })
+            .collect();
+        stencil_derivative(&times, values, index)
+    }
+
     #[cfg_attr(verus_only, verus_spec(outcome =>
         ensures match outcome {
             Some(sample) => self.samples@.len() > 0 && *sample == self.samples@.last(),
@@ -1035,6 +1125,7 @@ impl FlightRecordSample {
                         },
                         wing_bending_factor: Some(event.wing_bending_factor),
                         tail_wrenches: event.tail_wrenches,
+                        drag_breakdown: event.drag_breakdown,
                         ..sample
                     },
                     None => sample,
@@ -1151,6 +1242,44 @@ fn elapsed_ticks(start: (u128, f64), end: (u128, f64)) -> f64 {
     (end.0 - start.0) as f64 + (end.1 - start.1)
 }
 
+/// Differentiates `values` at `index` over the nonuniform `times` grid.
+///
+/// Interior samples use the three-point central difference for nonuniform
+/// spacing; the ends use one-sided two-point differences. A degenerate or
+/// non-finite interval yields `None`, mirroring the CSV export estimate.
+fn stencil_derivative(times: &[f64], values: &[f64], index: usize) -> Option<f64> {
+    let count = values.len();
+    if count < 2 || index >= count {
+        return None;
+    }
+    let slope = |first: usize, second: usize| {
+        let interval = times[second] - times[first];
+        if interval > 0.0 && interval.is_finite() {
+            let derivative = (values[second] - values[first]) / interval;
+            derivative.is_finite().then_some(derivative)
+        } else {
+            None
+        }
+    };
+    if index == 0 {
+        return slope(0, 1);
+    }
+    if index + 1 == count {
+        return slope(count - 2, count - 1);
+    }
+    let previous = index - 1;
+    let next = index + 1;
+    let back = times[index] - times[previous];
+    let forward = times[next] - times[index];
+    if back <= 0.0 || forward <= 0.0 || !back.is_finite() || !forward.is_finite() {
+        return None;
+    }
+    let derivative = -forward / (back * (back + forward)) * values[previous]
+        + (forward - back) / (back * forward) * values[index]
+        + back / (forward * (back + forward)) * values[next];
+    derivative.is_finite().then_some(derivative)
+}
+
 fn playback_sample(
     sample: &FlightRecordSample,
     tick_index: u64,
@@ -1164,6 +1293,7 @@ fn playback_sample(
         input: sample.controls.input_from_previous,
         wing_bending_factor: sample.wing_bending_factor,
         tail_wrenches: sample.tail_wrenches,
+        drag_breakdown: sample.drag_breakdown,
         telemetry: sample.telemetry,
     })
 }
@@ -1231,6 +1361,7 @@ fn interpolate_samples(
         input: end.controls.input_from_previous,
         wing_bending_factor: end.wing_bending_factor,
         tail_wrenches: start.tail_wrenches,
+        drag_breakdown: start.drag_breakdown,
         telemetry,
     })
 }

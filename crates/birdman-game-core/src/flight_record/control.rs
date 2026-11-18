@@ -231,6 +231,8 @@ pub struct FlightRecordBoundaryEvent {
     pub wing_bending_factor: WingBendingFactor,
     /// Accepted horizontal and vertical tail wrenches at this boundary.
     pub tail_wrenches: Option<[Option<crate::Wrench>; 2]>,
+    /// Whole-aircraft drag decomposition at this boundary.
+    pub drag_breakdown: Option<crate::DragBreakdown>,
 }
 
 impl FlightRecordBoundaryEvent {
@@ -249,6 +251,7 @@ impl FlightRecordBoundaryEvent {
                             input,
                             wing_bending_factor,
                             tail_wrenches: Some(report.tail_wrenches()),
+                            drag_breakdown: report.drag_breakdown(),
                         })),
                         _ => Err(super::FlightRecordError::FinalizationMismatch),
                     }

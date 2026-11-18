@@ -76,6 +76,47 @@ pub enum GameUiAnalysisChart {
     Altitude,
     /// Air-relative and ground-relative speed.
     Speed,
+    /// Body attitude angles over recorded time.
+    Attitude,
+    /// Body angular rates over recorded time.
+    AngularVelocity,
+    /// Derived linear and angular accelerations over recorded time.
+    Acceleration,
+    /// Angle of attack and sideslip angle over recorded time.
+    FlowAngles,
+    /// Tail moments about datum O over recorded time.
+    TailTorque,
+    /// Pilot input and command history over recorded time.
+    InputHistory,
+    /// Composite center-of-mass offset and pilot position over recorded time.
+    CenterOfGravity,
+    /// Induced and profile drag over recorded time.
+    DragBreakdown,
+    /// Kinetic energy over recorded time.
+    KineticEnergy,
+    /// Potential, kinetic, total and cumulative lost energy over recorded time.
+    EnergyBalance,
+    /// Mechanical energy loss rate over recorded time.
+    EnergyLossRate,
+    /// Sink rate and glide ratio over recorded time.
+    SinkAndGlide,
+    /// Load factor over recorded time.
+    LoadFactor,
+    /// Ambient wind components over recorded time.
+    Wind,
+}
+
+/// Aircraft parameters supplied at presentation time for record-derived
+/// energy and load charts.
+///
+/// The record stores no mass data; the application supplies the parameters
+/// only when the record is positively identified with a known aircraft.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GameUiRecordAircraft {
+    /// Mass model of the identified aircraft.
+    pub model: birdman_game_core::AircraftModel,
+    /// Gravity of the identified aircraft document.
+    pub gravity: birdman_game_core::Gravity,
 }
 
 /// Exclusive pause overlay.
@@ -636,6 +677,9 @@ pub struct GameUiContext<'view> {
     pub identity: Option<SessionScenarioIdentity>,
     /// Existing authoritative record selected for this view.
     pub record: Option<&'view FlightRecord>,
+    /// Aircraft parameters identified with the displayed record, supplied
+    /// for energy and load charts; absent when unidentified.
+    pub record_aircraft: Option<GameUiRecordAircraft>,
     /// Saved comparison/provenance metadata when an external archive is displayed.
     pub archived_identity: Option<&'view birdman_game_format::FlightRecordIdentityMetadata>,
     /// Registered environment briefing readout derived in Rust.

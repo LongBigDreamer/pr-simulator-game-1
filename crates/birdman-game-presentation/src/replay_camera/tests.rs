@@ -39,6 +39,7 @@ fn fixture_record(
                 tick_index: tick,
                 wing_bending_factor: None,
                 tail_wrenches: None,
+                drag_breakdown: None,
                 fraction: 0.0,
                 flight_state: FlightState::try_new(
                     position,
@@ -222,6 +223,7 @@ fn replay_uses_adopted_interval_and_same_time_terminal_deformation() {
         input,
         wing_bending_factor: WingBendingFactor::try_new(1.4).unwrap(),
         tail_wrenches: None,
+        drag_breakdown: None,
     });
     let record =
         FlightRecord::try_from_finalized_samples(fixture.header(), samples.clone(), finalization)

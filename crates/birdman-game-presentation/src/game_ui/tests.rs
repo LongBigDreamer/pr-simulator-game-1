@@ -84,6 +84,7 @@ pub(super) fn context<'view>(
         preset: difficulty.preset_label(),
         identity: session.configuration_identity(),
         record: session.playback_record(),
+        record_aircraft: None,
         environment_readout: "気象試験値",
         platform: platform.clone(),
     }
@@ -5843,4 +5844,137 @@ fn display_settings_choices_show_the_current_selection_in_setup_and_pause_settin
     pause_context.display_settings = selected;
     let view = game_ui_view(&state, &pause_context).unwrap();
     assert_choices(&view);
+}
+
+#[test]
+fn analysis_series_charts_build_for_always_available_kinds() {
+    let session = finalized();
+    let platform = platform();
+    for (chart, series_count) in [
+        (GameUiAnalysisChart::Attitude, 3),
+        (GameUiAnalysisChart::AngularVelocity, 3),
+        (GameUiAnalysisChart::Acceleration, 6),
+        (GameUiAnalysisChart::FlowAngles, 2),
+        (GameUiAnalysisChart::InputHistory, 9),
+        (GameUiAnalysisChart::CenterOfGravity, 4),
+        (GameUiAnalysisChart::SinkAndGlide, 2),
+        (GameUiAnalysisChart::Wind, 3),
+    ] {
+        let state = GameUiState {
+            result_tab: GameUiResultTab::Analysis,
+            analysis_chart: chart,
+            analysis_time_seconds: 0.015,
+            ..GameUiState::default()
+        };
+        let view = game_ui_view(&state, &context(&session, difficulty(), &platform)).unwrap();
+        let GameUiControlContent::Chart { chart: shown, plot } =
+            &control(&view, "game-analysis-plot").content
+        else {
+            panic!("expected shared plot");
+        };
+        assert_eq!(*shown, chart);
+        assert_eq!(plot.series.len(), series_count, "chart {chart:?}");
+        assert!(plot.y_maximum > plot.y_minimum, "chart {chart:?}");
+        assert!(
+            !plot.cursor_points.is_empty(),
+            "chart {chart:?} has cursor points"
+        );
+        for (cursor, series) in plot.cursor_points.iter().zip(&plot.series) {
+            assert_eq!(cursor.color, series.color);
+        }
+    }
+}
+
+#[test]
+fn analysis_conditional_charts_follow_record_diagnostics_and_aircraft_supply() {
+    let session = finalized();
+    let platform = platform();
+    let record = session.flight_record().unwrap();
+    assert!(
+        record
+            .samples()
+            .iter()
+            .all(|sample| sample.tail_wrenches.is_some() && sample.drag_breakdown.is_some())
+    );
+    let has_button = |view: &GameUiView, id: &str| {
+        view.panels
+            .iter()
+            .flat_map(|panel| &panel.controls)
+            .any(|control| control.id == id)
+    };
+    // The flown record carries tail wrenches and the drag decomposition, but
+    // the default context supplies no identified aircraft parameters.
+    let state = GameUiState {
+        result_tab: GameUiResultTab::Analysis,
+        analysis_chart: GameUiAnalysisChart::DragBreakdown,
+        analysis_time_seconds: 0.015,
+        ..GameUiState::default()
+    };
+    let view = game_ui_view(&state, &context(&session, difficulty(), &platform)).unwrap();
+    assert!(has_button(&view, "game-analysis-tail-torque"));
+    assert!(has_button(&view, "game-analysis-drag-breakdown"));
+    assert!(!has_button(&view, "game-analysis-kinetic-energy"));
+    let GameUiControlContent::Chart { plot, .. } = &control(&view, "game-analysis-plot").content
+    else {
+        panic!("expected shared plot");
+    };
+    assert_eq!(plot.series.len(), 3);
+    assert_eq!(plot.series[0].points.len(), record.samples().len());
+
+    // Without an aircraft supply, an energy selection falls back to the map.
+    let state = GameUiState {
+        result_tab: GameUiResultTab::Analysis,
+        analysis_chart: GameUiAnalysisChart::KineticEnergy,
+        ..GameUiState::default()
+    };
+    let view = game_ui_view(&state, &context(&session, difficulty(), &platform)).unwrap();
+    let GameUiControlContent::Chart { chart: shown, .. } =
+        &control(&view, "game-analysis-plot").content
+    else {
+        panic!("expected shared plot");
+    };
+    assert_eq!(*shown, GameUiAnalysisChart::Map);
+
+    // With an identified aircraft supply, the energy charts appear and build.
+    let model = birdman_game_core::AircraftModel::try_new(
+        4.0,
+        birdman_game_core::InertiaTensor::diagonal(2.0, 3.0, 4.0).unwrap(),
+        1.0,
+        -0.2,
+        -0.5,
+        0.5,
+        1.0,
+        2.0,
+        [0.0; 3],
+        [birdman_game_core::TailActuatorLimits::try_new([-0.2, 0.2], 1.0).unwrap(); 2],
+    )
+    .unwrap();
+    let mut supplied = context(&session, difficulty(), &platform);
+    supplied.record_aircraft = Some(GameUiRecordAircraft {
+        model,
+        gravity: birdman_game_core::Gravity::try_new(9.80665).unwrap(),
+    });
+    for (chart, series_count) in [
+        (GameUiAnalysisChart::KineticEnergy, 1),
+        (GameUiAnalysisChart::EnergyBalance, 4),
+        (GameUiAnalysisChart::EnergyLossRate, 1),
+        (GameUiAnalysisChart::LoadFactor, 2),
+        (GameUiAnalysisChart::TailTorque, 6),
+    ] {
+        let state = GameUiState {
+            result_tab: GameUiResultTab::Analysis,
+            analysis_chart: chart,
+            analysis_time_seconds: 0.015,
+            ..GameUiState::default()
+        };
+        let view = game_ui_view(&state, &supplied).unwrap();
+        let GameUiControlContent::Chart { chart: shown, plot } =
+            &control(&view, "game-analysis-plot").content
+        else {
+            panic!("expected shared plot");
+        };
+        assert_eq!(*shown, chart);
+        assert_eq!(plot.series.len(), series_count, "chart {chart:?}");
+        assert!(plot.y_maximum > plot.y_minimum, "chart {chart:?}");
+    }
 }

@@ -1655,8 +1655,7 @@ fn analysis(
     context: &GameUiContext<'_>,
     replay: bool,
 ) -> Result<(), GameUiError> {
-    menu.section("analysis-tabs", "", GameUiSectionLayout::Row);
-    for (chart, id, label) in [
+    let available: Vec<(GameUiAnalysisChart, &str, &str)> = [
         (GameUiAnalysisChart::Map, "game-analysis-map", "軌跡"),
         (
             GameUiAnalysisChart::Altitude,
@@ -1664,18 +1663,99 @@ fn analysis(
             "高度",
         ),
         (GameUiAnalysisChart::Speed, "game-analysis-speed", "速度"),
-    ] {
+        (
+            GameUiAnalysisChart::Attitude,
+            "game-analysis-attitude",
+            "姿勢角",
+        ),
+        (
+            GameUiAnalysisChart::AngularVelocity,
+            "game-analysis-angular-velocity",
+            "角速度",
+        ),
+        (
+            GameUiAnalysisChart::Acceleration,
+            "game-analysis-acceleration",
+            "加速度",
+        ),
+        (
+            GameUiAnalysisChart::FlowAngles,
+            "game-analysis-flow-angles",
+            "迎え角・横滑り角",
+        ),
+        (
+            GameUiAnalysisChart::TailTorque,
+            "game-analysis-tail-torque",
+            "尾翼トルク",
+        ),
+        (
+            GameUiAnalysisChart::InputHistory,
+            "game-analysis-input-history",
+            "入力履歴",
+        ),
+        (
+            GameUiAnalysisChart::CenterOfGravity,
+            "game-analysis-center-of-gravity",
+            "重心位置",
+        ),
+        (
+            GameUiAnalysisChart::DragBreakdown,
+            "game-analysis-drag-breakdown",
+            "抗力内訳",
+        ),
+        (
+            GameUiAnalysisChart::KineticEnergy,
+            "game-analysis-kinetic-energy",
+            "運動エネルギー",
+        ),
+        (
+            GameUiAnalysisChart::EnergyBalance,
+            "game-analysis-energy-balance",
+            "エネルギー収支",
+        ),
+        (
+            GameUiAnalysisChart::EnergyLossRate,
+            "game-analysis-energy-loss-rate",
+            "エネルギー損失率",
+        ),
+        (
+            GameUiAnalysisChart::SinkAndGlide,
+            "game-analysis-sink-and-glide",
+            "沈降・滑空比",
+        ),
+        (
+            GameUiAnalysisChart::LoadFactor,
+            "game-analysis-load-factor",
+            "荷重倍数",
+        ),
+        (GameUiAnalysisChart::Wind, "game-analysis-wind", "風"),
+    ]
+    .into_iter()
+    .filter(|(chart, _, _)| {
+        super::chart::analysis_chart_available(*chart, context.record, context.record_aircraft)
+    })
+    .collect();
+    let effective = if available
+        .iter()
+        .any(|(chart, _, _)| *chart == state.analysis_chart)
+    {
+        state.analysis_chart
+    } else {
+        GameUiAnalysisChart::Map
+    };
+    menu.section("analysis-tabs", "", GameUiSectionLayout::Row);
+    for (chart, id, label) in &available {
         menu.push(
             id,
             label,
             context.platform.analysis_available,
             "analysis",
             GameUiControlContent::Button {
-                action: GameUiAction::SetAnalysisChart { chart },
+                action: GameUiAction::SetAnalysisChart { chart: *chart },
                 presentation: GameUiButtonPresentation::Choice {
                     group: "analysis-chart".to_owned(),
                     group_label: String::new(),
-                    selected: state.analysis_chart == chart,
+                    selected: effective == *chart,
                     description: String::new(),
                 },
             },
@@ -1693,16 +1773,17 @@ fn analysis(
         };
         let mut plot = super::chart::record_chart(
             record,
-            state.analysis_chart,
+            effective,
             time,
             context.platform.chart_extent,
             context.platform.viewport.root_font_size,
+            context.record_aircraft,
         )?;
         let sample = record
             .sample_at_seconds(time)
             .map_err(GameUiError::Record)?;
-        plot.seek_target = (duration > 0.0 && state.analysis_chart != GameUiAnalysisChart::Map)
-            .then_some(if replay {
+        plot.seek_target =
+            (duration > 0.0 && effective != GameUiAnalysisChart::Map).then_some(if replay {
                 GameUiRangeTarget::Replay
             } else {
                 GameUiRangeTarget::Analysis
@@ -1714,15 +1795,29 @@ fn analysis(
         menu.section("analysis-chart", "", GameUiSectionLayout::Column);
         menu.push(
             "game-analysis-plot",
-            match state.analysis_chart {
+            match effective {
                 GameUiAnalysisChart::Map => "水平軌跡",
                 GameUiAnalysisChart::Altitude => "高度の推移",
                 GameUiAnalysisChart::Speed => "対気速度・対地速度",
+                GameUiAnalysisChart::Attitude => "姿勢角の推移",
+                GameUiAnalysisChart::AngularVelocity => "角速度の推移",
+                GameUiAnalysisChart::Acceleration => "加速度の推移（推定）",
+                GameUiAnalysisChart::FlowAngles => "迎え角・横滑り角の推移",
+                GameUiAnalysisChart::TailTorque => "尾翼モーメントの推移",
+                GameUiAnalysisChart::InputHistory => "入力履歴",
+                GameUiAnalysisChart::CenterOfGravity => "重心位置の推移",
+                GameUiAnalysisChart::DragBreakdown => "抗力内訳の推移",
+                GameUiAnalysisChart::KineticEnergy => "運動エネルギーの推移",
+                GameUiAnalysisChart::EnergyBalance => "エネルギー収支の推移",
+                GameUiAnalysisChart::EnergyLossRate => "エネルギー損失率の推移",
+                GameUiAnalysisChart::SinkAndGlide => "沈降速度・滑空比の推移",
+                GameUiAnalysisChart::LoadFactor => "荷重倍数の推移",
+                GameUiAnalysisChart::Wind => "風の推移",
             },
             false,
             "analysis",
             GameUiControlContent::Chart {
-                chart: state.analysis_chart,
+                chart: effective,
                 plot: Box::new(plot),
             },
         );

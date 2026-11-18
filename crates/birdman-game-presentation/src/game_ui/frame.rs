@@ -58,7 +58,15 @@ pub fn game_ui_frame(
         .map(|_| record.sample_at_seconds(time).map_err(GameUiError::Record))
         .transpose()?;
     if let (Some((id, chart, plot)), Some(sample)) = (chart, sample) {
-        frame.chart_cursor = Some(super::chart::chart_cursor(id, chart, plot, sample, time));
+        frame.chart_cursor = Some(super::chart::chart_cursor(
+            id,
+            chart,
+            plot,
+            sample,
+            time,
+            record,
+            context.record_aircraft,
+        ));
     }
     for control in controls {
         match &control.content {
