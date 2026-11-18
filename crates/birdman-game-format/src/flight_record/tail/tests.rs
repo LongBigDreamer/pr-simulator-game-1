@@ -745,6 +745,31 @@ fn v6_archive_round_trip_keeps_named_physical_controls_and_saved_outputs() {
 }
 
 #[test]
+fn archive_round_trip_preserves_a_produced_attitude_bit_for_bit() {
+    // A produced attitude whose components are not a fixed point of the
+    // try_new normalization: reconstructing the archive through try_new
+    // would change every component, so the reconstruction must preserve
+    // the stored components exactly.
+    let witness = [
+        -0.9238682578789561,
+        -0.0018905878155130766,
+        -0.004564282745068991,
+        0.3826787622594677,
+    ];
+    let mut document = document();
+    document.samples[0].state.attitude_body_to_ned = witness;
+    let archive = TailFlightRecordDocument::decode_json(&document.encode_json().unwrap()).unwrap();
+    let restored = archive.to_finalized_core_record().unwrap();
+    assert_eq!(
+        restored.samples()[0]
+            .flight_state
+            .attitude_body_to_ned()
+            .components(),
+        witness
+    );
+}
+
+#[test]
 fn obsolete_versions_are_rejected_before_deserializing_their_payload() {
     for version in 1..=5 {
         let json = serde_json::json!({"schema_version": version});
