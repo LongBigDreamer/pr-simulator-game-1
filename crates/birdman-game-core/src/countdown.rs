@@ -171,3 +171,76 @@ fn verify_countdown_retention(state: CountdownState, advanced_nanos: u128) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{CountdownAdvance, CountdownState, start_countdown};
+
+    /// Witness for the `valid()` precondition of `remaining_seconds` and
+    /// `observe`: `start_countdown(0, 3)` yields token 1, duration 3 and
+    /// elapsed 0, which satisfies every component of `valid()`
+    /// (token > 0, duration_seconds > 0, elapsed_nanos < duration in nanos).
+    fn witness() -> CountdownState {
+        match start_countdown(0, 3) {
+            Ok(state) => state,
+            Err(_) => panic!("start_countdown(0, 3) must succeed"),
+        }
+    }
+
+    #[test]
+    fn start_countdown_witness_satisfies_valid_components() {
+        let state = witness();
+        assert_eq!(state.token(), 1);
+        assert_eq!(state.duration_seconds(), 3);
+        assert_eq!(state.elapsed_nanos(), 0);
+        assert!(state.token() > 0);
+        assert!(state.duration_seconds() > 0);
+        assert!(
+            state.elapsed_nanos() < state.duration_seconds() as u64 * 1_000_000_000,
+            "elapsed must lie below the duration bound of valid()"
+        );
+    }
+
+    #[test]
+    fn remaining_seconds_positive_control_on_witness() {
+        let state = witness();
+        assert_eq!(state.remaining_seconds(), 3);
+    }
+
+    #[test]
+    fn observe_positive_control_waiting_and_retention_on_witness() {
+        let state = witness();
+        let next = match state.observe(state.token(), Some(0), true) {
+            Ok(CountdownAdvance::Waiting(next)) => next,
+            _ => panic!("observing the witness at 0 ns must stay Waiting"),
+        };
+        assert_eq!(next.token(), state.token());
+        assert_eq!(next.duration_seconds(), state.duration_seconds());
+        assert_eq!(next.elapsed_nanos(), 0);
+        assert_eq!(next.remaining_seconds(), 3);
+
+        let repeated = match next.observe(next.token(), Some(0), true) {
+            Ok(CountdownAdvance::Waiting(repeated)) => repeated,
+            _ => panic!("repeating the same observation must stay Waiting"),
+        };
+        assert_eq!(repeated.token(), next.token());
+        assert_eq!(repeated.duration_seconds(), next.duration_seconds());
+        assert_eq!(repeated.elapsed_nanos(), next.elapsed_nanos());
+    }
+
+    #[test]
+    fn observe_positive_control_mid_countdown_and_launch_ready() {
+        let state = witness();
+        let next = match state.observe(state.token(), Some(1_500_000_000), true) {
+            Ok(CountdownAdvance::Waiting(next)) => next,
+            _ => panic!("observing the witness at 1.5 s must stay Waiting"),
+        };
+        assert_eq!(next.elapsed_nanos(), 1_500_000_000);
+        assert_eq!(next.remaining_seconds(), 2);
+
+        assert!(matches!(
+            state.observe(state.token(), Some(3_000_000_000), true),
+            Ok(CountdownAdvance::LaunchReady)
+        ));
+    }
+}
