@@ -957,7 +957,7 @@ impl TailFlightRecordSampleDocument {
             flight_state: FlightState::try_new(
                 point(state.datum_position_ned_m)?,
                 vector(state.datum_velocity_ned_mps)?,
-                UnitQuaternion::try_new(attitude[0], attitude[1], attitude[2], attitude[3])
+                UnitQuaternion::try_from_normalized_components(attitude)
                     .map_err(|_| FlightRecordFormatError::InvalidRecord)?,
                 BodyVector::try_new(
                     angular_velocity[0],

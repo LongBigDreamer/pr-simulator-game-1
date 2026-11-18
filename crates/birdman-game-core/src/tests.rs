@@ -823,6 +823,38 @@ fn quaternion_rotation_round_trips_vectors_between_frames() {
 }
 
 #[test]
+fn quaternion_reconstruction_preserves_produced_components_bit_for_bit() {
+    // A produced attitude whose components are not a fixed point of the
+    // try_new normalization: normalizing it a second time changes the
+    // components, and a third application returns the original values,
+    // so the normalization oscillates and never reaches a fixed point.
+    let produced = [
+        -0.9238682578789561,
+        -0.0018905878155130766,
+        -0.004564282745068991,
+        0.3826787622594677,
+    ];
+    let renormalized = UnitQuaternion::try_new(produced[0], produced[1], produced[2], produced[3])
+        .unwrap()
+        .components();
+    assert_ne!(renormalized, produced);
+    let reconstructed = UnitQuaternion::try_from_normalized_components(produced).unwrap();
+    assert_eq!(reconstructed.components(), produced);
+    assert!(
+        UnitQuaternion::try_from_normalized_components([2.0, 0.0, 0.0, 0.0]).is_err(),
+        "non-unit components stay rejected"
+    );
+    assert!(
+        UnitQuaternion::try_from_normalized_components([0.0; 4]).is_err(),
+        "the zero quaternion stays rejected"
+    );
+    assert!(
+        UnitQuaternion::try_from_normalized_components([f64::NAN, 0.0, 0.0, 0.0]).is_err(),
+        "non-finite components stay rejected"
+    );
+}
+
+#[test]
 fn quaternion_interpolation_preserves_shortest_arc_branches_and_exact_endpoints() {
     for angular_span in [0.02, 0.1, core::f64::consts::PI] {
         for sign in [-1.0, 1.0] {
