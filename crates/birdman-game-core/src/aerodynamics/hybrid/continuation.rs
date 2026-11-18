@@ -58,6 +58,7 @@ pub(super) fn global_flow(
     speed: f64,
     in_plane: f64,
     density: f64,
+    ground_effect: GroundEffect,
 ) -> Result<(Wrench, BodyVector, f64, f64), HybridError> {
     let evaluate = || {
         if speed == 0.0 {
@@ -89,7 +90,7 @@ pub(super) fn global_flow(
         };
         let area = polar.reference().area_square_meters;
         if k == 1.0 {
-            let evaluation = polar.evaluate_body_velocity(velocity, density)?;
+            let evaluation = polar.evaluate_body_velocity(velocity, density, ground_effect)?;
             let induced = evaluation.flow().dynamic_pressure_pascal()
                 * area
                 * evaluation.coefficients().induced_drag();
@@ -122,7 +123,7 @@ pub(super) fn global_flow(
         let (total, induced) = if k == 0.0 {
             (plate, 0.0)
         } else {
-            let evaluation = polar.evaluate_body_velocity(velocity, density)?;
+            let evaluation = polar.evaluate_body_velocity(velocity, density, ground_effect)?;
             let induced = k
                 * evaluation.flow().dynamic_pressure_pascal()
                 * area
@@ -221,6 +222,7 @@ fn plate_wrench(
         .map_err(|_| AeroError::NonFinite)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn proxy_increment(
     proxy: HybridProxy,
     actual: BodyVector,
@@ -229,12 +231,22 @@ pub(super) fn proxy_increment(
     slope: f64,
     delta: f64,
     tail: Option<(TailAerodynamics, f64)>,
+    ground_effect: GroundEffect,
 ) -> Result<(Wrench, Option<Wrench>, f64), HybridError> {
     let site = HybridSite::Surface(proxy.role());
     let weight = regular_gate(proxy, actual, reference, delta)
         .map_err(|cause| HybridError::new(site, cause))?;
     if weight == 1.0 {
-        return linear_proxy_increment(proxy, actual, reference, density, slope, delta, tail);
+        return linear_proxy_increment(
+            proxy,
+            actual,
+            reference,
+            density,
+            slope,
+            delta,
+            tail,
+            ground_effect,
+        );
     }
     let evaluate = || {
         let a = plate_wrench(proxy, actual, density, delta, tail)?;
@@ -251,9 +263,17 @@ pub(super) fn proxy_increment(
         if weight == 0.0 {
             return Ok((increment, tail.map(|_| a), 0.0));
         }
-        let (linear, actual_linear, induced_increment) =
-            linear_proxy_increment(proxy, actual, reference, density, slope, delta, tail)
-                .map_err(|error| error.cause())?;
+        let (linear, actual_linear, induced_increment) = linear_proxy_increment(
+            proxy,
+            actual,
+            reference,
+            density,
+            slope,
+            delta,
+            tail,
+            ground_effect,
+        )
+        .map_err(|error| error.cause())?;
         Ok((
             blend_wrench(linear, increment, weight)?,
             match actual_linear {
