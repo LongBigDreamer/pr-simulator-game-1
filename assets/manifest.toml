@@ -12,7 +12,7 @@ processing = "Original SVG vector artwork; no external source transformation; UT
 
 [[assets]]
 path = "assets/aircraft/playable-glider-v7.json"
-sha256 = "5f71fcf543afb8119ba05f9294bf0e09e485b3aa376ef28328da4d7fd2f42132"
+sha256 = "1f45ed432055f70c0938332ac2bff0ab60d9c12b6edc19f5bdf0ef09520793ce"
 source = "Original fictional glider parameters and procedural structural definition"
 source_version = "Aircraft document schema 5; physical model 7"
 license = "MIT"
