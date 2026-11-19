@@ -6,7 +6,7 @@
     "airframe_kg": 40,
     "inertia_about_datum_kg_m2": [
       [
-        644,
+        643,
         0,
         0
       ],

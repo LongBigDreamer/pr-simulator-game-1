@@ -368,7 +368,7 @@ D_i=q_i S_{projected,i}\left(C_{D0}+\phi_i\frac{C_{L,i}^2}{\pi AR_s e}\right)
 
 - 公開既定は`bpg041-playable-hybrid-mock`のmodel 8、catalog 10 / scenario 11、`bpg040-tail-rate-feedback`のcontroller 4である。
 - `assets/aircraft/playable-glider-v7.json`が質量・慣性・section・strip・anchor・全機polar・構造材寸法・視点mountを定義する。contentの`AircraftDefinition`が検証済みdocumentと借用viewのstorageを所有する。
-- 機体慣性はdatumまわりでdiag(644, 81, 695) kg·m²とする。[BR Simulatorの固定revisionにあるQX-18設定](https://github.com/mtkbirdman/mtkbirdman.com/blob/736fa36bcb3bfd65c7808b19e9d215682af2671a/BirdmanRallySim/Plane/AerodynamicCalculator.cs#L224-L240)をFRDへ変換した公開シミュレーターのデータ（総質量93.875 kg、重心まわりの対角成分876.5、76.0、946.5 kg·m²）を基に、ゲーム用の推定値を設定した。ロールとヨーは質量比100/93.875と翼幅比20.863/25.133の二乗を掛け、ピッチは質量比のみを掛けて整数へ丸める。元の積慣性$ I_{xz}=-5.960607 $ kg·m²を0とする対角近似を用いる。パイロットは中立位置でdatum上の点質量として合成するため、この位置では機体値が全機値と一致する。
+- 機体慣性はdatumまわりでdiag(643, 81, 695) kg·m²とする。[BR Simulatorの固定revisionにあるQX-18設定](https://github.com/mtkbirdman/mtkbirdman.com/blob/736fa36bcb3bfd65c7808b19e9d215682af2671a/BirdmanRallySim/Plane/AerodynamicCalculator.cs#L224-L240)をFRDへ変換した公開シミュレーターのデータ（総質量93.875 kg、重心まわりの対角成分876.5、76.0、946.5 kg·m²）を基に、ゲーム用の推定値を設定した。ロールとヨーは質量比100/93.875と翼幅比20.863/25.133の二乗を掛け、ピッチは質量比のみを掛けて整数へ丸める。元の積慣性$I_{xz}=-5.960607$ kg·m²を0とする対角近似を用いる。パイロットは中立位置でdatum上の点質量として合成するため、この位置では機体値が全機値と一致する。
 - 内蔵コントローラはcontroller 4のgainを用いる。角速度から舵角への定常的な換算関係と、慣性で変わる角加速度・過渡応答を区別する。gainを慣性比だけで縮小する換算は採用せず、操縦支援を含む実tick経路の試験で挙動を確認する。
 - 定常滑空は汎用の`SteadyGlideTrim`が、質量モデル・全機polar・`SteadyGlideConditions`から求める。指定した迎角区間で力の釣合を解き、合成重心まわりのモーメントを満たすパイロット位置を求める。
 - 発進CGの水平投影は台前縁中央とし、既trim姿勢・実対気速度の曲げ・中立舵角による全接触外形を台の支持平面より上へ置く高さを共有appで導出する。登録形状では有限台に対する保守的な高さの余裕は4.406 mm以下。初速は確定位置の風をtrim対気速度へ一度加算する。
