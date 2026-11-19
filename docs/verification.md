@@ -23,7 +23,7 @@
 ## 2. 標準検査と実行コマンド
 
 Rust toolchain、Node.js、依存ライブラリとVerusはリポジトリの固定設定を使用する。
-通常CIはUbuntu・Windowsの共有検査、macOS Intel・Apple SiliconのNative CLI検査、独立したWindows形式検証の5ジョブで実行する。
+通常CIはUbuntu・WindowsのLint、Test Rust、Web、Optimized I/Oと、UbuntuのCross-target tracesを並列実行する。集約Verifyは全検証jobの成功を要求する。macOS両architectureのNative CLIとWindowsの形式検証は個別に実行する。
 
 ~~~sh
 cargo fmt --check
@@ -38,7 +38,7 @@ npm ci
 npm run verify
 ~~~
 
-- cross-target接続は`npm run test:cross-target -- target/cross-target-check`で検査する。CheckのUbuntuジョブは`npm run verify`後にMesaのソフトウェアVulkanで一度実行し、run ID・attempt固有の出力先と、結果・trace・source照合情報のSHA-256をジョブログとStep Summaryへ記録する。Nativeとfresh WASMの同じApplicationRuntimeへ生観測とI/O完了を渡し、集約出力・保存原文・終了分類を照合する。入力接続世代・不規則なframe時刻・遅延回復は共有ownerの代表接続で確認する。
+- cross-target接続は`npm run test:cross-target -- target/cross-target-check`で検査する。CheckのCross-target traces jobはfresh WASMを生成し、MesaのソフトウェアVulkanで一度実行し、run ID・attempt固有の出力先と、結果・trace・source照合情報のSHA-256をジョブログとStep Summaryへ記録する。Nativeとfresh WASMの同じApplicationRuntimeへ生観測とI/O完了を渡し、集約出力・保存原文・終了分類を照合する。入力接続世代・不規則なframe時刻・遅延回復は共有ownerの代表接続で確認する。
 - Nativeの`--verify`は本番updateが受けた観測・文字計測結果・I/O要求を`application-trace.jsonl`へ記録する。描画はcapture境界だけを比較点とし、WASM再生へ同じ文字計測の成功・失敗を返す。
 - 新規保存のJSONは実build来歴のtarget/profileを個別に記録し、それ以外の内容を比較する。公開Title操作からNativeの保存原文を読み戻し、同原文のJSON/CSV出力をbyte一致で検査する。
 - cross-targetの浮動小数点値は絶対許容差 $10^{-9}$ と相対許容差 $10^{-10}$ の和で比較する。identity・比較key・source fingerprint・終了分類は完全一致、保存原文とそのCSV再出力はbyte一致とする。実行結果にはsourceとWASMのhashを記録する。
@@ -47,7 +47,7 @@ npm run verify
 - WASIはビルドと実行の結果を分ける。
 - `npm run verify` はWASM生成を一度行い、型検査・lint・試験・資産/依存境界・本番ビルドを実行する。
 - 共有Hostの実時間接続: cleanなsourceで`BPG_APPLICATION_SOURCE_SHA`へ`git rev-parse HEAD`のfull SHAを設定する（PowerShell: `$env:BPG_APPLICATION_SOURCE_SHA = (git rev-parse HEAD)`）。`cargo test -p birdman-game-host --test remote_session --release --locked -- --nocapture`で、配布と同じrelease profileの実HTTP/WebSocket、操作権、2接続の資源、飛行・切断・再接続と終了を検査し、通常のworkspace単体試験と区分する。
-- Browserの実I/O接続: cleanな同一sourceで`npm ci`と`npm run verify`を完了し、`BPG_VERIFY_BROWSER_IO=1`を設定して上記Host旅程を実行する。親旅程が実listenerのURLをNodeへ渡し、既存startup試験の`actual Host browser I/O`を実行する。Node・依存・同版WASMの不足は失敗として扱い、CPUによる描画資源の消費と実GPU描画の受入を区分する。
+- Browserの実I/O接続: cleanな同一sourceで`npm ci`と`npx tsx tools/wasm-build/main.ts`を完了し、`BPG_VERIFY_BROWSER_IO=1`を設定して上記Host旅程を実行する。親旅程が実listenerのURLをNodeへ渡し、既存startup試験の`actual Host browser I/O`を実行する。Node・依存・同版WASMの不足は失敗として扱い、CPUによる描画資源の消費と実GPU描画の受入を区分する。
 
 追加の既存検査は次のとおりである。
 

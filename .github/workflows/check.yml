@@ -20,8 +20,8 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.deploy_pages) }}
 
 jobs:
-  verify:
-    name: Verify (${{ matrix.os }})
+  lint:
+    name: Lint (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -42,11 +42,6 @@ jobs:
           [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
           test -z "$(git status --porcelain --untracked-files=normal)"
           printf 'BPG_APPLICATION_SOURCE_SHA=%s\nBPG_NATIVE_SOURCE_SHA=%s\n' "$source_sha" "$source_sha" >> "$GITHUB_ENV"
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '24.14.1'
-          cache: npm
       - name: Install pinned Rust toolchain
         shell: bash
         run: |
@@ -84,17 +79,73 @@ jobs:
             "SCCACHE_GHA_RW_MODE=$env:CACHE_MODE"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - run: cargo fmt --check
-      - run: cargo clippy --workspace --all-targets --features birdman-game-host/server-ui --locked -- -D warnings
+      - run: cargo clippy --workspace --all-targets --features birdman-game-host/server-ui,birdman-game-bevy/verify-harness,birdman-game-bevy/openxr --locked -- -D warnings
         env:
           RUSTC_WRAPPER: ''
       - name: Lint the named optimized Host integration target
         run: cargo clippy -p birdman-game-host --test remote_session --features server-ui --locked -- -D warnings
         env:
           RUSTC_WRAPPER: ''
-      - name: Lint native verification and OpenXR features
-        run: cargo clippy -p birdman-game-bevy --all-targets --features verify-harness,openxr --locked -- -D warnings
+      - run: cargo doc --workspace --no-deps --locked
+
+  test-rust:
+    name: Test Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      RUSTDOCFLAGS: -D warnings
+      PYTHONDONTWRITEBYTECODE: '1'
+      CARGO_PROFILE_DEV_DEBUG: '1'
+      CARGO_PROFILE_TEST_DEBUG: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Declare the clean checkout source for native and remote contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha=$(git rev-parse --verify HEAD)
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          test -z "$(git status --porcelain --untracked-files=normal)"
+          printf 'BPG_APPLICATION_SOURCE_SHA=%s\nBPG_NATIVE_SOURCE_SHA=%s\n' "$source_sha" "$source_sha" >> "$GITHUB_ENV"
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install --no-self-update
+          rustup default "$(rustup show active-toolchain | cut -d ' ' -f1)"
+          rustup toolchain uninstall stable
+      - name: Install native Linux window dependencies
+        if: runner.os == 'Linux'
+        timeout-minutes: 15
+        run: |
+          sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3 update --error-on=any
+          sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3 install -y --no-install-recommends pkg-config libudev-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers
+      - name: Cache Rust dependencies and tools
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: . -> target
+          key: check-${{ hashFiles('Cargo.toml') }}
+          save-if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy_pages)) }}
+      - name: Install Windows compiler cache
+        if: runner.os == 'Windows'
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: v0.18.0
+      - name: Configure Windows compiler cache
+        if: runner.os == 'Windows'
+        shell: pwsh
         env:
-          RUSTC_WRAPPER: ''
+          CACHE_MODE: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy_pages)) && 'READ_WRITE' || 'READ_ONLY' }}
+        run: |
+          @(
+            'RUSTC_WRAPPER=sccache'
+            'CARGO_INCREMENTAL=0'
+            'SCCACHE_GHA_ENABLED=on'
+            'SCCACHE_GHA_VERSION=birdman-check-windows-v1'
+            "SCCACHE_GHA_RW_MODE=$env:CACHE_MODE"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Test workspace packages (Linux)
         if: runner.os == 'Linux'
         run: cargo test --workspace --features birdman-game-bevy/verify-harness,birdman-game-bevy/openxr,birdman-game-host/server-ui --locked
@@ -146,26 +197,205 @@ jobs:
           python -m unittest discover -s tools/world-build -v
       - name: Test native artifact packaging
         run: python -m unittest discover -s tools/native-release -v
-      - run: cargo doc --workspace --no-deps --locked
       - name: Verify core without std
         run: cargo build -p birdman-game-core --target wasm32v1-none --locked
-      - name: Build browser WASM adapter
-        run: cargo build -p birdman-game-wasm --target wasm32-unknown-unknown --locked
       - name: Build WASI CLI
         run: cargo build -p birdman-game-cli --target wasm32-wasip2 --locked
-      - name: Install matching wasm-bindgen CLI
-        run: cargo install wasm-bindgen-cli --locked --version 0.2.129
       - name: Verify hybrid flight modes
         run: cargo run -p birdman-game-cli --locked -- verify-hybrid-flight all
+
+  web:
+    name: Web (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      RUSTDOCFLAGS: -D warnings
+      PYTHONDONTWRITEBYTECODE: '1'
+      CARGO_PROFILE_DEV_DEBUG: '1'
+      CARGO_PROFILE_TEST_DEBUG: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Declare the clean checkout source for native and remote contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha=$(git rev-parse --verify HEAD)
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          test -z "$(git status --porcelain --untracked-files=normal)"
+          printf 'BPG_APPLICATION_SOURCE_SHA=%s\nBPG_NATIVE_SOURCE_SHA=%s\n' "$source_sha" "$source_sha" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.14.1'
+          cache: npm
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install --no-self-update
+          rustup default "$(rustup show active-toolchain | cut -d ' ' -f1)"
+          rustup toolchain uninstall stable
+      - name: Install native Linux window dependencies
+        if: runner.os == 'Linux'
+        timeout-minutes: 15
+        run: |
+          sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3 update --error-on=any
+          sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3 install -y --no-install-recommends pkg-config libudev-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers
+      - name: Cache Rust dependencies and tools
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: . -> target
+          key: check-${{ hashFiles('Cargo.toml') }}
+          save-if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy_pages)) }}
+      - name: Install Windows compiler cache
+        if: runner.os == 'Windows'
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: v0.18.0
+      - name: Configure Windows compiler cache
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CACHE_MODE: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy_pages)) && 'READ_WRITE' || 'READ_ONLY' }}
+        run: |
+          @(
+            'RUSTC_WRAPPER=sccache'
+            'CARGO_INCREMENTAL=0'
+            'SCCACHE_GHA_ENABLED=on'
+            'SCCACHE_GHA_VERSION=birdman-check-windows-v1'
+            "SCCACHE_GHA_RW_MODE=$env:CACHE_MODE"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Install matching wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --locked --version 0.2.129
       - run: npm ci
       - run: npm run verify
+      - name: Configure GitHub Pages
+        if: matrix.os == 'ubuntu-24.04' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.deploy_pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - name: Upload verified site
+        if: matrix.os == 'ubuntu-24.04' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.deploy_pages
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: web/dist
+
+  io-release:
+    name: Optimized I/O (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      RUSTDOCFLAGS: -D warnings
+      PYTHONDONTWRITEBYTECODE: '1'
+      CARGO_PROFILE_DEV_DEBUG: '1'
+      CARGO_PROFILE_TEST_DEBUG: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Declare the clean checkout source for native and remote contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha=$(git rev-parse --verify HEAD)
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          test -z "$(git status --porcelain --untracked-files=normal)"
+          printf 'BPG_APPLICATION_SOURCE_SHA=%s\nBPG_NATIVE_SOURCE_SHA=%s\n' "$source_sha" "$source_sha" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.14.1'
+          cache: npm
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install --no-self-update
+          rustup default "$(rustup show active-toolchain | cut -d ' ' -f1)"
+          rustup toolchain uninstall stable
+      - name: Install native Linux window dependencies
+        if: runner.os == 'Linux'
+        timeout-minutes: 15
+        run: |
+          sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3 update --error-on=any
+          sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3 install -y --no-install-recommends pkg-config libudev-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers
+      - name: Cache Rust dependencies and tools
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: . -> target
+          key: check-${{ hashFiles('Cargo.toml') }}
+          save-if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy_pages)) }}
+      - name: Install Windows compiler cache
+        if: runner.os == 'Windows'
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: v0.18.0
+      - name: Configure Windows compiler cache
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CACHE_MODE: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy_pages)) && 'READ_WRITE' || 'READ_ONLY' }}
+        run: |
+          @(
+            'RUSTC_WRAPPER=sccache'
+            'CARGO_INCREMENTAL=0'
+            'SCCACHE_GHA_ENABLED=on'
+            'SCCACHE_GHA_VERSION=birdman-check-windows-v1'
+            "SCCACHE_GHA_RW_MODE=$env:CACHE_MODE"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Install matching wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --locked --version 0.2.129
+      - run: npm ci
+      - name: Build the fresh matching Wasm for the Browser I/O journey
+        run: npx tsx tools/wasm-build/main.ts
       - name: Verify actual Host, Native and Browser I/O in optimized execution
         timeout-minutes: 20
         env:
           BPG_VERIFY_BROWSER_IO: '1'
         run: cargo test -p birdman-game-host --test remote_session --release --locked -- --nocapture
+
+  cross-target:
+    name: Cross-target traces (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RUSTDOCFLAGS: -D warnings
+      PYTHONDONTWRITEBYTECODE: '1'
+      CARGO_PROFILE_DEV_DEBUG: '1'
+      CARGO_PROFILE_TEST_DEBUG: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Declare the clean checkout source for native and remote contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha=$(git rev-parse --verify HEAD)
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          test -z "$(git status --porcelain --untracked-files=normal)"
+          printf 'BPG_APPLICATION_SOURCE_SHA=%s\nBPG_NATIVE_SOURCE_SHA=%s\n' "$source_sha" "$source_sha" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.14.1'
+          cache: npm
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install --no-self-update
+          rustup default "$(rustup show active-toolchain | cut -d ' ' -f1)"
+          rustup toolchain uninstall stable
+      - name: Install native Linux window dependencies
+        timeout-minutes: 15
+        run: |
+          sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3 update --error-on=any
+          sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3 install -y --no-install-recommends pkg-config libudev-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-0 libvulkan1 mesa-vulkan-drivers
+      - name: Cache Rust dependencies and tools
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: . -> target
+          key: check-${{ hashFiles('Cargo.toml') }}
+          save-if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy_pages)) }}
+      - name: Install matching wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --locked --version 0.2.129
+      - run: npm ci
       - name: Compare Native and WASM application traces with software Vulkan
-        if: runner.os == 'Linux'
         timeout-minutes: 15
         shell: bash
         env:
@@ -198,7 +428,7 @@ jobs:
           trap record_result EXIT
           npm run test:cross-target -- "$output"
       - name: Preserve cross-target failure evidence
-        if: failure() && runner.os == 'Linux'
+        if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cross-target-failure-${{ github.run_id }}-${{ github.run_attempt }}
@@ -209,14 +439,19 @@ jobs:
             target/cross-target-check-${{ github.run_id }}-${{ github.run_attempt }}/native/source-evidence.json
           if-no-files-found: warn
           retention-days: 3
-      - name: Configure GitHub Pages
-        if: matrix.os == 'ubuntu-24.04' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.deploy_pages
-        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
-      - name: Upload verified site
-        if: matrix.os == 'ubuntu-24.04' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.deploy_pages
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
-        with:
-          path: web/dist
+
+  verify:
+    name: Verify
+    if: ${{ always() }}
+    needs: [lint, test-rust, web, io-release, cross-target]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every verification job to succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          printf '%s\n' "$RESULTS"
+          jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"
 
   native-macos:
     name: Native CLI (${{ matrix.target }})
