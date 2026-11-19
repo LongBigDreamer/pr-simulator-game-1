@@ -6,7 +6,7 @@ pub use geometry::{
     PlanformSymmetry, TailAerodynamics,
 };
 
-use super::{StaticPolar, UniformAir, map_math_error};
+use super::{GroundEffect, StaticPolar, UniformAir, map_math_error};
 use crate::aerodynamics_contract::{
     AeroError, AerodynamicEvaluationError, HybridError, HybridLimit, HybridSite, HybridSurfaceRole,
 };
@@ -289,6 +289,11 @@ impl<'a> HybridAerodynamicLoad<'a> {
         if !speed.is_finite() {
             return Err(HybridError::new(HybridSite::Datum, AeroError::NonFinite));
         }
+        let ground_effect = self
+            .model
+            .polar
+            .ground_effect_at(state)
+            .map_err(|cause| HybridError::new(HybridSite::Datum, cause))?;
         let (static_wrench, reference_velocity, reference_speed, static_induced_drag) =
             global_flow(
                 self.model.polar,
@@ -296,6 +301,7 @@ impl<'a> HybridAerodynamicLoad<'a> {
                 speed,
                 alpha_speed,
                 self.density_kg_m3,
+                ground_effect,
             )?;
         let reference_pressure = dynamic_pressure(reference_speed, self.density_kg_m3)
             .map_err(|cause| HybridError::new(HybridSite::Datum, cause))?;
@@ -314,8 +320,13 @@ impl<'a> HybridAerodynamicLoad<'a> {
                     surface: geometry.role(),
                     index,
                 };
-                let actual =
+                let (actual, proxy_height) =
                     self.proxy_velocity(state, datum_velocity, datum_wind, *proxy, site)?;
+                let surface_effect = GroundEffect::from_height_above_surface(
+                    proxy_height,
+                    geometry.projected_span_m(),
+                )
+                .map_err(|cause| HybridError::new(site, cause))?;
                 let (increment, tail_actual, induced_increment) = proxy_increment(
                     *proxy,
                     actual,
@@ -330,6 +341,7 @@ impl<'a> HybridAerodynamicLoad<'a> {
                     surface
                         .tail_aerodynamics()
                         .map(|coefficients| (coefficients, geometry.aspect_ratio())),
+                    surface_effect,
                 )
                 .map_err(|error| error.at_site(site))?;
                 if let Some(tail) = tail_actual {
@@ -391,6 +403,8 @@ impl<'a> HybridAerodynamicLoad<'a> {
         })
     }
 
+    /// Returns the proxy point's body velocity and its height above the water
+    /// plane `D = 0`, both sampled at the same world position.
     fn proxy_velocity(
         &self,
         state: &FlightState,
@@ -398,7 +412,7 @@ impl<'a> HybridAerodynamicLoad<'a> {
         datum_wind: NedVector,
         proxy: HybridProxy,
         site: HybridSite,
-    ) -> Result<BodyVector, HybridError> {
+    ) -> Result<(BodyVector, f64), HybridError> {
         let evaluate = || {
             let [point_x, point_y, point_z] = proxy.point().components();
             let radius = BodyVector::try_new(point_x, point_y, point_z).map_err(map_math_error)?;
@@ -410,6 +424,7 @@ impl<'a> HybridAerodynamicLoad<'a> {
                 .datum_position_ned()
                 .translated(world_offset)
                 .map_err(map_math_error)?;
+            let height = -position.components()[2];
             let wind = self
                 .wind_field
                 .velocity_at(position)
@@ -425,6 +440,7 @@ impl<'a> HybridAerodynamicLoad<'a> {
             datum_velocity
                 .plus(rate_velocity)
                 .and_then(|velocity| velocity.minus(wind_difference))
+                .map(|velocity| (velocity, height))
                 .map_err(map_math_error)
         };
         evaluate().map_err(|cause| HybridError::new(site, cause))
@@ -446,6 +462,7 @@ struct ProxyReference {
     pressure: f64,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn linear_proxy_increment(
     proxy: HybridProxy,
     actual: BodyVector,
@@ -454,6 +471,7 @@ fn linear_proxy_increment(
     slope: f64,
     delta: f64,
     tail: Option<(TailAerodynamics, f64)>,
+    ground_effect: GroundEffect,
 ) -> Result<(Wrench, Option<Wrench>, f64), HybridError> {
     let site = HybridSite::Surface(proxy.role());
     let actual_speed = actual
@@ -470,6 +488,7 @@ fn linear_proxy_increment(
             density,
             slope,
             tail_parameters,
+            ground_effect,
         )?;
         let (reference_wrench, reference_induced) = tail_proxy_wrench(
             proxy,
@@ -479,6 +498,7 @@ fn linear_proxy_increment(
             density,
             slope,
             tail_parameters,
+            ground_effect,
         )?;
         let force = actual_wrench
             .force_body_newtons()
@@ -521,6 +541,7 @@ fn linear_proxy_increment(
         .map_err(|cause| HybridError::new(site, cause))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn tail_proxy_wrench(
     proxy: HybridProxy,
     velocity: BodyVector,
@@ -529,6 +550,7 @@ fn tail_proxy_wrench(
     density: f64,
     slope: f64,
     (coefficients, aspect_ratio): (TailAerodynamics, f64),
+    ground_effect: GroundEffect,
 ) -> Result<(Wrench, f64), HybridError> {
     let site = HybridSite::Surface(proxy.role());
     let evaluate = || {
@@ -536,7 +558,7 @@ fn tail_proxy_wrench(
         let in_plane = hypot2(u, w);
         let lift_coefficient = proxy.anchor().lift_coefficient()
             + slope * (alpha - proxy.anchor().geometric_alpha_rad());
-        let induced_drag_coefficient = lift_coefficient * lift_coefficient
+        let induced_drag_coefficient = ground_effect.factor() * lift_coefficient * lift_coefficient
             / (core::f64::consts::PI * aspect_ratio * coefficients.span_efficiency());
         let drag_coefficient = coefficients.zero_lift_drag_coefficient() + induced_drag_coefficient;
         let pressure_area = dynamic_pressure(speed, density)? * proxy.projected_area_m2();

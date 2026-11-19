@@ -36,10 +36,11 @@ mod wind_field;
 
 pub use aerodynamics::{
     AerodynamicLoadProvider, DragBreakdown, ElementOrientation, ElementReference, ElementalFlow,
-    FlowAngles, HybridAerodynamicLoad, HybridAnchor, HybridEvaluation, HybridModel, HybridProxy,
-    HybridSection, HybridSurface, HybridSurfaceGeometry, PlanformSymmetry, PolarAnalysisMethod,
-    PolarMomentAxes, StaticPolar, StaticPolarCoefficients, StaticPolarEvaluation, StaticPolarLoad,
-    StaticPolarMetadata, StaticPolarRow, TailAerodynamics, TailIncidence, UniformAir,
+    FlowAngles, GroundEffect, HybridAerodynamicLoad, HybridAnchor, HybridEvaluation, HybridModel,
+    HybridProxy, HybridSection, HybridSurface, HybridSurfaceGeometry, PlanformSymmetry,
+    PolarAnalysisMethod, PolarMomentAxes, StaticPolar, StaticPolarCoefficients,
+    StaticPolarEvaluation, StaticPolarLoad, StaticPolarMetadata, StaticPolarRow, TailAerodynamics,
+    TailIncidence, UniformAir,
 };
 pub use aerodynamics_contract::{
     AeroError, AerodynamicEvaluationError, AerodynamicStage, HybridError, HybridFlowKind,
@@ -117,7 +118,7 @@ pub const PHYSICS_HZ: u32 = 100;
 ///
 /// Increment when the same validated model and tick-input sequence can produce a
 /// different physical trajectory or terminal state.
-pub const PHYSICS_MODEL_VERSION: u32 = 9;
+pub const PHYSICS_MODEL_VERSION: u32 = 10;
 
 /// Fixed simulation timestep in seconds.
 pub const PHYSICS_DT_SECONDS: f64 = 1.0 / PHYSICS_HZ as f64;
