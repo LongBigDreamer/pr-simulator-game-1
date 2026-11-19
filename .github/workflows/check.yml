@@ -58,8 +58,8 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: . -> target
-          key: check-${{ hashFiles('Cargo.toml') }}
-          save-if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy_pages)) }}
+          shared-key: check-${{ hashFiles('Cargo.toml') }}-verify
+          save-if: 'false'
       - name: Install Windows compiler cache
         if: runner.os == 'Windows'
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
@@ -126,7 +126,7 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: . -> target
-          key: check-${{ hashFiles('Cargo.toml') }}
+          shared-key: check-${{ hashFiles('Cargo.toml') }}-verify
           save-if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy_pages)) }}
       - name: Install Windows compiler cache
         if: runner.os == 'Windows'
@@ -246,8 +246,8 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: . -> target
-          key: check-${{ hashFiles('Cargo.toml') }}
-          save-if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy_pages)) }}
+          shared-key: check-optimized-v1
+          save-if: 'false'
       - name: Install Windows compiler cache
         if: runner.os == 'Windows'
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
@@ -321,7 +321,7 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: . -> target
-          key: check-${{ hashFiles('Cargo.toml') }}
+          shared-key: check-optimized-v1
           save-if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy_pages)) }}
       - name: Install Windows compiler cache
         if: runner.os == 'Windows'
@@ -355,7 +355,7 @@ jobs:
   cross-target:
     name: Cross-target traces (ubuntu-24.04)
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 45
     env:
       RUSTDOCFLAGS: -D warnings
       PYTHONDONTWRITEBYTECODE: '1'
@@ -390,13 +390,19 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: . -> target
-          key: check-${{ hashFiles('Cargo.toml') }}
-          save-if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy_pages)) }}
+          shared-key: check-${{ hashFiles('Cargo.toml') }}-verify
+          save-if: 'false'
+      - name: Restore optimized dependencies for the Wasm trace
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: . -> target
+          shared-key: check-optimized-v1
+          save-if: 'false'
       - name: Install matching wasm-bindgen CLI
         run: cargo install wasm-bindgen-cli --locked --version 0.2.129
       - run: npm ci
       - name: Compare Native and WASM application traces with software Vulkan
-        timeout-minutes: 15
+        timeout-minutes: 25
         shell: bash
         env:
           WGPU_BACKEND: vulkan

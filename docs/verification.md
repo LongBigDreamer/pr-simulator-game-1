@@ -25,6 +25,9 @@
 Rust toolchain、Node.js、依存ライブラリとVerusはリポジトリの固定設定を使用する。
 通常CIはUbuntu・WindowsのLint、Test Rust、Web、Optimized I/Oと、UbuntuのCross-target tracesを並列実行する。集約Verifyは全検証jobの成功を要求する。macOS両architectureのNative CLIとWindowsの形式検証は個別に実行する。
 
+- 依存キャッシュ: Nativeのdev/testはTest Rust、WASMとHost I/OのreleaseはOptimized I/Oを保存元とする。LintとWebは対応するキャッシュを参照し、Cross-target tracesは両系統を復元する。OS・architecture・Rust版・コンパイル環境・依存manifestの照合はrust-cacheが担当する。
+- 保存条件: mainへのpushとPages公開を伴わないmainの手動検査で更新する。PRとPages公開runは参照専用とし、同じキーへの並列保存を避ける。Windowsではsccacheによるコンパイル結果の再利用も行う。
+
 ~~~sh
 cargo fmt --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
