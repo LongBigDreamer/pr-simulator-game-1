@@ -45,8 +45,10 @@ export function readyApplicationFixture() {
     const width = Array.from(request.text).length * request.font_size_px * 0.7;
     return new Float64Array([width, 0, width, request.font_size_px * 0.8, request.font_size_px * 0.2]);
   };
+  let consuming = false;
   const observe = (input: ApplicationInput, now = 0): ApplicationOutput => {
     let output = JSON.parse(owner.update(JSON.stringify({ observed_ms: now, input }), measure)) as ApplicationOutput;
+    const lease = output.drawing?.asset_lease ?? null;
     if (output.drawing != null) {
       drawing = output.drawing;
       if (drawing.ui.kind === "view") view = drawing.ui.view;
@@ -77,6 +79,13 @@ export function readyApplicationFixture() {
         prepared.delete(request.resource_id);
         output = observe({ kind: "resources_released", resource_id: request.resource_id, failure: null }, now);
       }
+    }
+    if (lease !== null && !consuming) {
+      consuming = true;
+      try {
+        observe({ kind: "buffers_consumed", lease_id: lease.lease_id,
+          renderer_resource_id: lease.renderer_resource_id, resource_epoch: lease.resource_epoch }, now);
+      } finally { consuming = false; }
     }
     return output;
   };

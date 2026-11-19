@@ -18,8 +18,8 @@
 | 機体JSON | `AircraftDocument`、schema 5、最大256 KiB |
 | 制御設定JSON | `ControllerDocument`、schema 1、最大64 KiB |
 | 環境JSON | `EnvironmentDocument`、schema 1、最大8 MiB |
-| 飛行記録JSON | 新規schema 10、archiveはschema 6/7/8/9/10、最大16 MiB |
-| 飛行ログCSV | schema 6〜10をそれぞれexport version 3〜7へ投影 |
+| 飛行記録JSON | 新規schema 12、archiveはschema 6〜12、最大16 MiB |
+| 飛行ログCSV | schema 6〜12をそれぞれexport version 3〜9へ投影 |
 | Personal Best | 比較方式v5、Rustによるkey再生成・選定 |
 | 物理・積分・接触 | physics model 9 |
 | 既定機体・scenario | aircraft model 7、catalog 10、scenario 11、controllerはIDと原文SHA-256 |
@@ -300,13 +300,14 @@ Analysis用の発進台・湖岸・望遠camera点はOSMとAW3D30に基づく試
 
 ### codecとJSON
 
-- 現行codecはschema 6・7・8・9・10・11を受理する。
+- 現行codecはschema 6・7・8・9・10・11・12を受理する。
 - schema 7は全sampleの有限な`wing_bending_factor`を要求し、同時刻の採用値は任意の終端`boundary_event`に保持する。
 - schema 6は曲げ係数の未記録状態を保持する。旧schema 6・7は尾翼荷重を未収録として読み込み、保存原文を保持する。
 - schema 8は各sampleの水平・垂直尾翼の荷重を保持する。各面の値は機体FRD軸の力とdatumまわりのモーメントであり、面が存在しない場合はnullとする。同時刻の採用値は終端`boundary_event`に保持する。
 - schema 9は機体の`configuration_id`と原文JSONのSHA-256を保持する。
 - schema 10はcontrollerのIDと原文SHA-256、coreの固定長controller identity、封印した実効ControlModeを保持する。schema 10の実効modeは組込みcontrollerの実行条件として復元する。
-- schema 11はBuiltIn/External execution、要求modeと最終hardware採用を区分する。外部実角はsample/boundaryのphysical incidence一箇所に保存し、要求・構造制限・阻害情報と最初のfaultを別に保持する。通常飛行とAttractはschema 11を生成する。
+- schema 11はBuiltIn/External execution、要求modeと最終hardware採用を区分する。外部実角はsample/boundaryのphysical incidence一箇所に保存し、要求・構造制限・阻害情報と最初のfaultを別に保持する。
+- schema 12は各sampleへ全機抗力内訳（誘導抗力と形状抗力、単位N）を保持し、同時刻の採用値は終端`boundary_event`に保持する。定義は[飛行力学](flight-dynamics.md)の抗力内訳に従う。通常飛行とAttractはschema 12を生成する。
 - 旧記録は原文と既存keyを保持して閲覧する。SHA未収録の記録は既存の登録機体ID・model versionに対応し、選択中の原文SHAが実際の同梱機体と一致する場合に映像を再生できる。
 - 未対応データを通知して元の保存内容を保持する。
 - 破損、未知field、非有限値、非単位quaternion、時刻・header不整合と、schemaに対応しない係数・eventの組合せを拒否する。
@@ -317,7 +318,7 @@ Analysis用の発進台・湖岸・望遠camera点はOSMとAW3D30に基づく試
 - JSON exportは解決済み条件と来歴を含む完全な記録である。
 - 保存されていない情報を現行buildから補完しない。
 
-### CSV version 3/4/5/6/7/8
+### CSV version 3/4/5/6/7/8/9
 
 - CSVは初期・全成功tick・fractional terminalを省略せず、位置、速度、姿勢、角速度、pilot状態、入力、actuator、風、telemetry、終了情報等を出力する。
 - 列名に単位を明示し、f64のround-trip表現を使う。
@@ -327,6 +328,7 @@ Analysis用の発進台・湖岸・望遠camera点はOSMとAW3D30に基づく試
 - version 6は`aircraft_source_sha256`を追加し、同じ申告機体IDの原文を区別する。
 - version 7は`controller_source_sha256`・`control_mode`・`effective_feedback_authority`を追加し、封印した実効値を出力する。
 - version 8はexecution kind・要求mode・最初のcontroller fault、外部要求角・構造制限角・阻害maskを追加する。実角は既存physical incidence列を正本とし、架空のManual/FBW値を外部reportへ補わない。
+- version 9は`induced_drag_n`・`profile_drag_n`を追加し、各sampleの抗力内訳を出力する。
 
 - 加速度は保存済みNED速度、FRD角速度、pilot相対速度の有限差分による派生値である。
 - 内点は不等間隔3点、端点は2点の割線を用い、methodとstencil時刻を出力する。

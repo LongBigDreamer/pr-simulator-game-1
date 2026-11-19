@@ -35,7 +35,9 @@ use birdman_game_app::application::SessionCommand;
 use birdman_game_core::SessionPhase;
 use birdman_game_format::{WaterQuality, WeatherClass};
 use birdman_game_presentation::{
-    game_ui::*, screen_render_auto::ScreenShadowMap, screen_render_scale::ScreenRenderScale,
+    game_ui::*,
+    screen_render_auto::{ScreenRenderAutoStatus, ScreenShadowMap},
+    screen_render_scale::ScreenRenderScale,
 };
 use birdman_game_runtime::{ApplicationInput, ApplicationRenderQuality};
 use std::{
@@ -210,6 +212,7 @@ enum Check {
     FlightCapture(String),
     Flight,
     Result,
+    AutoInitialWindow,
     Delay(Duration),
     Motion(WaterMotion, MotionEndpoint),
     Range(GameUiRangeTarget),
@@ -452,7 +455,7 @@ impl Verification {
             loop {
                 checks.push(Check::Motion(motion, MotionEndpoint::Start));
                 if water_case.is_some_and(|case| case.auto) {
-                    checks.push(Check::Delay(Duration::from_secs(5)));
+                    checks.push(Check::AutoInitialWindow);
                 }
                 checks.extend([
                     Check::Capture(format!("motion-{}-start.png", motion.label())),
@@ -907,6 +910,27 @@ fn advance_step(world: &mut World, verification: &mut Verification) -> Result<()
         Check::Delay(duration) => {
             if let Some(MotionInterval::Interrupted { phase, .. }) = verification.motion_interval { return Err(format!("Water motion interrupted: {phase:?}")); }
             if verification.stage_started.elapsed() >= duration { verification.next(); }
+        }
+        Check::AutoInitialWindow => {
+            if let Some(snapshot) = runtime.lock().local_screen_render_snapshot() {
+                match &snapshot.status {
+                    ScreenRenderAutoStatus::Unsupported { cause }
+                    | ScreenRenderAutoStatus::Failed { cause } => {
+                        return Err(format!("Water Auto unavailable: {cause}"));
+                    }
+                    _ => {}
+                }
+                if snapshot.initial_observation_epoch.is_some() {
+                    println!(
+                        "Water Auto initial valid window and resource ACK confirmed: {snapshot:?}; later flight adaptation remains active"
+                    );
+                    verification.next();
+                } else if verification.stage_started.elapsed() > Duration::from_secs(10) {
+                    return Err(format!(
+                        "Water Auto initial valid window timed out: {snapshot:?}"
+                    ));
+                }
+            }
         }
         Check::Motion(motion, endpoint) => {
             if endpoint == MotionEndpoint::Start {

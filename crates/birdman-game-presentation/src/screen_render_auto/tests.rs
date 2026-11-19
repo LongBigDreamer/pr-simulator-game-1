@@ -296,6 +296,10 @@ fn ready_is_derived_from_a_complete_valid_window_and_old_epochs_cannot_start_it(
         controller.initial_observation_epoch(),
         Some(controller.epoch())
     );
+    assert_eq!(
+        controller.snapshot().initial_observation_epoch,
+        Some(controller.epoch())
+    );
 }
 
 #[test]
@@ -339,9 +343,14 @@ fn complete_initial_window_survives_ack_and_continuous_adaptation_without_snapsh
             .observe(sample(&controller, 0, start, 20.0), start, false)
             .unwrap();
         assert_eq!(controller.initial_observation_epoch(), Some(initial_epoch));
+        assert_eq!(
+            controller.snapshot().initial_observation_epoch,
+            Some(initial_epoch)
+        );
     }
     controller.pending(controller.now_ms + 501.0).unwrap();
     assert_eq!(controller.initial_observation_epoch(), None);
+    assert_eq!(controller.snapshot().initial_observation_epoch, None);
 }
 
 #[test]

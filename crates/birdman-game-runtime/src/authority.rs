@@ -662,6 +662,9 @@ impl ApplicationAuthority {
             preset: self.application.display_preset(),
             identity: self.identity()?,
             record: self.application.core_session().playback_record(),
+            record_aircraft: self.application.record_aircraft().map(|(model, gravity)| {
+                birdman_game_presentation::game_ui::GameUiRecordAircraft { model, gravity }
+            }),
             archived_identity: self
                 .application
                 .archive()

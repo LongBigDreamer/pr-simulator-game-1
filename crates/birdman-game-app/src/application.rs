@@ -10,8 +10,8 @@ pub use commands::{ApplicationError, PreparedFlight, RecordCommand, SessionComma
 pub use flight::{FlightFrameError, FlightFrameReport};
 
 use birdman_game_core::{
-    BriefingFailure, ControlMode, CountdownProgress, FlightRecord, GameSession, GameSessionError,
-    PauseReason, SessionPhase, SessionSnapshot, TailFlightTickInput,
+    AircraftModel, BriefingFailure, ControlMode, CountdownProgress, FlightRecord, GameSession,
+    GameSessionError, Gravity, PauseReason, SessionPhase, SessionSnapshot, TailFlightTickInput,
 };
 use birdman_game_format::{
     DifficultyPreset, DifficultySettings, FlightRecordTailIdentityDocument, InformationLevel,
@@ -730,6 +730,22 @@ impl ApplicationSession {
                 .aircraft_sha256
                 .as_deref()
                 .map_or_else(|| selected.is_bundled(), |sha| sha == selected.raw_sha256())
+    }
+
+    /// Returns the mass model and gravity of the aircraft that produced the
+    /// retained record, for record-derived energy presentation.
+    ///
+    /// The supply is present only when a record is retained and the record is
+    /// positively identified with the selected aircraft under the same rule
+    /// as [`Self::replay_available`]; the record itself stores no mass data.
+    pub fn record_aircraft(&self) -> Option<(AircraftModel, Gravity)> {
+        self.core_session().playback_record()?;
+        if !self.replay_available() {
+            return None;
+        }
+        let selected = self.aircraft().ok()?;
+        let gravity = Gravity::try_new(selected.definition().document().trim.gravity_mps2).ok()?;
+        Some((selected.definition().aircraft(), gravity))
     }
 
     /// Executes an admitted query or clock effect on the retained record source.

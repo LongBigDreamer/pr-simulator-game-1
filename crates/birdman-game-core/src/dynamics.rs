@@ -1064,6 +1064,102 @@ impl Momentum {
     }
 }
 
+/// Kinetic and potential energy of the simulated airframe-plus-pilot system.
+///
+/// The potential zero is the still-water plane (NED down coordinate zero),
+/// and each body's potential uses its own center height, matching the
+/// two-body model integrated by [`advance`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FlightEnergy {
+    kinetic_j: f64,
+    potential_j: f64,
+}
+
+impl FlightEnergy {
+    /// Returns the total kinetic energy in joules.
+    pub const fn kinetic_j(self) -> f64 {
+        self.kinetic_j
+    }
+
+    /// Returns the total potential energy in joules.
+    pub const fn potential_j(self) -> f64 {
+        self.potential_j
+    }
+
+    /// Returns the total mechanical energy in joules.
+    pub fn total_j(self) -> f64 {
+        self.kinetic_j + self.potential_j
+    }
+}
+
+/// Computes the mechanical energy of a validated flight state.
+///
+/// The airframe contributes translation of its own center of mass and
+/// rotation about it. The pilot contributes point-mass translation at the
+/// pilot position, including the relative pilot velocity along the airframe
+/// longitudinal axis.
+pub fn flight_energy(
+    model: &AircraftModel,
+    gravity: Gravity,
+    state: &FlightState,
+) -> Result<FlightEnergy, DynamicsError> {
+    validate_state(model, state)?;
+    let velocity_body = state
+        .attitude_body_to_ned
+        .ned_to_body(state.datum_velocity_ned)
+        .map_err(map_math_error)?
+        .components();
+    let angular_rate = state.angular_velocity_body.components();
+    let airframe_offset = model.airframe_center_of_mass_frd_m;
+    let airframe_rotation = cross3(angular_rate, airframe_offset);
+    let airframe_velocity = [
+        velocity_body[0] + airframe_rotation[0],
+        velocity_body[1] + airframe_rotation[1],
+        velocity_body[2] + airframe_rotation[2],
+    ];
+    let airframe_inertia = AircraftModel::airframe_inertia_at_center_of_mass(
+        model.airframe_mass_kg,
+        model.airframe_inertia_about_datum,
+        airframe_offset,
+    )?;
+    let angular_momentum = airframe_inertia.multiply(angular_rate);
+    let pilot_offset = [state.pilot_position_m, 0.0, model.pilot_vertical_offset_m];
+    let pilot_rotation = cross3(angular_rate, pilot_offset);
+    let pilot_velocity = [
+        velocity_body[0] + pilot_rotation[0] + state.pilot_velocity_mps,
+        velocity_body[1] + pilot_rotation[1],
+        velocity_body[2] + pilot_rotation[2],
+    ];
+    let kinetic = 0.5 * model.airframe_mass_kg * dot3(airframe_velocity, airframe_velocity)
+        + 0.5 * dot3(angular_rate, angular_momentum)
+        + 0.5 * model.pilot_mass_kg * dot3(pilot_velocity, pilot_velocity);
+    let datum_down = state.datum_position_ned.components()[2];
+    let airframe_down = state
+        .attitude_body_to_ned
+        .body_to_ned(BodyVector::from_components_unchecked(airframe_offset))
+        .map_err(map_math_error)?
+        .components()[2];
+    let pilot_down = state
+        .attitude_body_to_ned
+        .body_to_ned(BodyVector::from_components_unchecked(pilot_offset))
+        .map_err(map_math_error)?
+        .components()[2];
+    let potential = gravity.meters_per_second_squared()
+        * (model.airframe_mass_kg * -(datum_down + airframe_down)
+            + model.pilot_mass_kg * -(datum_down + pilot_down));
+    if !kinetic.is_finite() || !potential.is_finite() {
+        return Err(DynamicsError::NonFinite);
+    }
+    Ok(FlightEnergy {
+        kinetic_j: kinetic,
+        potential_j: potential,
+    })
+}
+
+fn dot3(left: [f64; 3], right: [f64; 3]) -> f64 {
+    left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
 /// Evaluates one deterministic fourth-order Runge–Kutta step.
 ///
 /// The provider is called at all four RK stages. Pilot acceleration is held

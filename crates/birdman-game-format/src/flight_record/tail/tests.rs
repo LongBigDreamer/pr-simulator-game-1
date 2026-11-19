@@ -379,6 +379,10 @@ fn current_document() -> TailFlightRecordDocument {
     for sample in &mut record.samples {
         sample.wing_bending_factor = Some(1.0);
         sample.tail_wrenches = Some([None; 2]);
+        sample.drag_breakdown = Some(TailDragBreakdownDocument {
+            induced_drag_n: 1.25,
+            profile_drag_n: 2.5,
+        });
     }
     record
 }
@@ -439,6 +443,7 @@ fn document() -> TailFlightRecordDocument {
     let initial = TailFlightRecordSampleDocument {
         tick_index: 0,
         tail_wrenches: None,
+        drag_breakdown: None,
         wing_bending_factor: None,
         fraction: 0.0,
         state: FlightRecordStateDocument {
@@ -745,6 +750,31 @@ fn v6_archive_round_trip_keeps_named_physical_controls_and_saved_outputs() {
 }
 
 #[test]
+fn archive_round_trip_preserves_a_produced_attitude_bit_for_bit() {
+    // A produced attitude whose components are not a fixed point of the
+    // try_new normalization: reconstructing the archive through try_new
+    // would change every component, so the reconstruction must preserve
+    // the stored components exactly.
+    let witness = [
+        -0.9238682578789561,
+        -0.0018905878155130766,
+        -0.004564282745068991,
+        0.3826787622594677,
+    ];
+    let mut document = document();
+    document.samples[0].state.attitude_body_to_ned = witness;
+    let archive = TailFlightRecordDocument::decode_json(&document.encode_json().unwrap()).unwrap();
+    let restored = archive.to_finalized_core_record().unwrap();
+    assert_eq!(
+        restored.samples()[0]
+            .flight_state
+            .attitude_body_to_ned()
+            .components(),
+        witness
+    );
+}
+
+#[test]
 fn obsolete_versions_are_rejected_before_deserializing_their_payload() {
     for version in 1..=5 {
         let json = serde_json::json!({"schema_version": version});
@@ -984,6 +1014,7 @@ fn schema_eight_boundary_retains_the_right_side_tail_wrench() {
         input,
         wing_bending_factor: 1.0,
         tail_wrenches: Some([Some(after), None]),
+        drag_breakdown: None,
     });
     let decoded = TailFlightRecordDocument::decode_json(&archive.encode_json().unwrap()).unwrap();
     let record = decoded.to_finalized_core_record().unwrap();
@@ -1038,6 +1069,7 @@ fn schema_seven_boundary_event_roundtrips_and_exports_a_distinct_same_time_csv_r
         input,
         wing_bending_factor: 2.0,
         tail_wrenches: None,
+        drag_breakdown: None,
     });
     let json = document.encode_json().unwrap();
     let decoded = TailFlightRecordDocument::decode_json(&json).unwrap();
@@ -1860,4 +1892,56 @@ fn external_record_retains_real_hardware_report_and_excludes_hitl_from_personal_
         .map(PersonalBestKey::digest);
     source.validate().unwrap();
     assert_eq!(source.header.personal_best_key, None);
+}
+
+#[test]
+fn schema_twelve_round_trips_the_drag_breakdown() {
+    let document = current_document();
+    assert_eq!(document.schema_version, 12);
+    let decoded = TailFlightRecordDocument::decode_json(&document.encode_json().unwrap()).unwrap();
+    assert_eq!(decoded, document);
+    let record = decoded.to_finalized_core_record().unwrap();
+    for sample in record.samples() {
+        let drag = sample.drag_breakdown.unwrap();
+        assert_eq!(drag.induced_newtons(), 1.25);
+        assert_eq!(drag.profile_newtons(), 2.5);
+    }
+    let rows = tail_csv_rows(&document);
+    assert_eq!(csv_value(&rows, 1, "log_export_version"), "9");
+    assert_eq!(csv_value(&rows, 1, "induced_drag_n"), "1.25");
+    assert_eq!(csv_value(&rows, 1, "profile_drag_n"), "2.5");
+}
+
+#[test]
+fn schema_eleven_records_carry_no_drag_breakdown() {
+    let mut legacy = current_document();
+    legacy.schema_version = 11;
+    for sample in &mut legacy.samples {
+        sample.drag_breakdown = None;
+    }
+    let decoded = TailFlightRecordDocument::decode_json(&legacy.encode_json().unwrap()).unwrap();
+    let record = decoded.to_finalized_core_record().unwrap();
+    assert!(
+        record
+            .samples()
+            .iter()
+            .all(|sample| sample.drag_breakdown.is_none())
+    );
+    // A schema-eleven archive must not smuggle the new field in.
+    let mut smuggled = legacy.clone();
+    smuggled.samples[0].drag_breakdown = Some(TailDragBreakdownDocument {
+        induced_drag_n: 1.0,
+        profile_drag_n: 1.0,
+    });
+    assert_eq!(
+        smuggled.to_finalized_core_record().err(),
+        Some(FlightRecordFormatError::InvalidRecord)
+    );
+    // A schema-twelve archive must carry the decomposition on every sample.
+    let mut incomplete = current_document();
+    incomplete.samples[0].drag_breakdown = None;
+    assert_eq!(
+        incomplete.to_finalized_core_record().err(),
+        Some(FlightRecordFormatError::InvalidRecord)
+    );
 }

@@ -90,7 +90,8 @@ pub fn advance_tail_flight_tick_with_shape_provider(
         evaluation.controls,
         evaluation.contact,
     );
-    report.tail_wrenches = evaluation.tail_wrenches;
+    report.tail_wrenches = evaluation.published.tail_wrenches;
+    report.drag_breakdown = Some(evaluation.published.drag_breakdown);
     Ok(report)
 }
 
@@ -477,7 +478,7 @@ mod tests {
                 .unwrap()
             };
             record
-                .begin_tail(previous, telemetry(previous.flight_state()), None)
+                .begin_tail(previous, telemetry(previous.flight_state()), None, None)
                 .unwrap();
             record
                 .append_tail_report(report, telemetry(contact.flight_state()))

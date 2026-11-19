@@ -1,7 +1,7 @@
 use crate::{
     AircraftModel, BodyPoint, BodyVector, ConstantLoad, DynamicsError, ExternalLoadProvider,
     FlightState, Gravity, InertiaTensor, LoadError, MathError, NedPoint, NedVector, PHYSICS_HZ,
-    PilotAcceleration, PilotPositionTarget, UnitQuaternion, Wrench, advance,
+    PilotAcceleration, PilotPositionTarget, UnitQuaternion, Wrench, advance, flight_energy,
     pilot_target_acceleration, total_momentum,
 };
 
@@ -823,6 +823,38 @@ fn quaternion_rotation_round_trips_vectors_between_frames() {
 }
 
 #[test]
+fn quaternion_reconstruction_preserves_produced_components_bit_for_bit() {
+    // A produced attitude whose components are not a fixed point of the
+    // try_new normalization: normalizing it a second time changes the
+    // components, and a third application returns the original values,
+    // so the normalization oscillates and never reaches a fixed point.
+    let produced = [
+        -0.9238682578789561,
+        -0.0018905878155130766,
+        -0.004564282745068991,
+        0.3826787622594677,
+    ];
+    let renormalized = UnitQuaternion::try_new(produced[0], produced[1], produced[2], produced[3])
+        .unwrap()
+        .components();
+    assert_ne!(renormalized, produced);
+    let reconstructed = UnitQuaternion::try_from_normalized_components(produced).unwrap();
+    assert_eq!(reconstructed.components(), produced);
+    assert!(
+        UnitQuaternion::try_from_normalized_components([2.0, 0.0, 0.0, 0.0]).is_err(),
+        "non-unit components stay rejected"
+    );
+    assert!(
+        UnitQuaternion::try_from_normalized_components([0.0; 4]).is_err(),
+        "the zero quaternion stays rejected"
+    );
+    assert!(
+        UnitQuaternion::try_from_normalized_components([f64::NAN, 0.0, 0.0, 0.0]).is_err(),
+        "non-finite components stay rejected"
+    );
+}
+
+#[test]
 fn quaternion_interpolation_preserves_shortest_arc_branches_and_exact_endpoints() {
     for angular_span in [0.02, 0.1, core::f64::consts::PI] {
         for sign in [-1.0, 1.0] {
@@ -1584,4 +1616,47 @@ fn a_load_failure_propagates_without_publishing_a_partial_state() {
         0.01,
     );
     assert_eq!(result, Err(DynamicsError::Load(LoadError::OutsideDomain)));
+}
+
+#[test]
+fn flight_energy_matches_two_body_analytic_values() {
+    let model = model(1.0, diagonal_inertia(2.0, 3.0, 4.0));
+    let gravity = Gravity::try_new(10.0).unwrap();
+    let rest = state(
+        [0.0, 0.0, -10.0],
+        [0.0; 3],
+        UnitQuaternion::IDENTITY,
+        [0.0; 3],
+        0.3,
+        0.0,
+    );
+    let energy = flight_energy(&model, gravity, &rest).unwrap();
+    assert_eq!(energy.kinetic_j(), 0.0);
+    // Airframe center is 10 m above the plane; the pilot rides 0.2 m higher.
+    assert!((energy.potential_j() - 10.0 * (4.0 * 10.0 + 10.2)).abs() <= 1e-9);
+    assert!((energy.total_j() - energy.potential_j()).abs() <= 1e-12);
+
+    let translating = state(
+        [0.0, 0.0, -10.0],
+        [3.0, 4.0, 0.0],
+        UnitQuaternion::IDENTITY,
+        [0.0; 3],
+        0.3,
+        0.0,
+    );
+    let energy = flight_energy(&model, gravity, &translating).unwrap();
+    assert!((energy.kinetic_j() - 0.5 * 5.0 * 25.0).abs() <= 1e-9);
+
+    let yawing = state(
+        [0.0, 0.0, -10.0],
+        [0.0; 3],
+        UnitQuaternion::IDENTITY,
+        [0.0, 0.0, 2.0],
+        0.3,
+        0.0,
+    );
+    let energy = flight_energy(&model, gravity, &yawing).unwrap();
+    // Airframe rotation about its own center: 1/2 * 4 * 2^2 = 8 J.
+    // Pilot at body x 0.3 m under yaw rate 2 rad/s: 1/2 * 1 * 0.6^2 = 0.18 J.
+    assert!((energy.kinetic_j() - 8.18).abs() <= 1e-9);
 }

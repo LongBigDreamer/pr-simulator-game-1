@@ -4,8 +4,9 @@ use crate::math::{BodyVector, MathError, NedVector};
 mod hybrid;
 mod polar;
 pub use hybrid::{
-    HybridAerodynamicLoad, HybridAnchor, HybridEvaluation, HybridModel, HybridProxy, HybridSection,
-    HybridSurface, HybridSurfaceGeometry, PlanformSymmetry, TailAerodynamics, TailIncidence,
+    DragBreakdown, HybridAerodynamicLoad, HybridAnchor, HybridEvaluation, HybridModel, HybridProxy,
+    HybridSection, HybridSurface, HybridSurfaceGeometry, PlanformSymmetry, TailAerodynamics,
+    TailIncidence,
 };
 pub use polar::{
     AerodynamicLoadProvider, PolarAnalysisMethod, PolarMomentAxes, StaticPolar,
@@ -156,6 +157,45 @@ impl ElementReference {
             span_meters,
             chord_meters,
         })
+    }
+}
+
+/// Wieselsberger surface-effect (ground-effect) factor for induced drag.
+///
+/// A lifting surface at height `h` above a flat surface, with span `b`, has
+/// its induced drag multiplied by `(16 h / b)^2 / (1 + (16 h / b)^2)` relative
+/// to free air (Wieselsberger 1921, NACA TM 77; Anderson, Introduction to
+/// Flight). The factor is zero at the surface and approaches one with height.
+/// Only induced drag is scaled; lift and moment coefficients carry no height
+/// dependence in this model.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(verus_only, vstd::prelude::verus_verify)]
+pub struct GroundEffect {
+    factor: f64,
+}
+
+impl GroundEffect {
+    /// The free-air factor, one, outside the surface-effect region.
+    pub const FREE_AIR: Self = Self { factor: 1.0 };
+
+    /// Computes the factor for a surface at a height above a flat surface.
+    ///
+    /// A negative height clamps to the surface, where the factor is zero.
+    pub fn from_height_above_surface(height_m: f64, span_m: f64) -> Result<Self, AeroError> {
+        if !height_m.is_finite() {
+            return Err(AeroError::NonFinite);
+        }
+        if !span_m.is_finite() || span_m <= 0.0 {
+            return Err(AeroError::InvalidReferenceGeometry);
+        }
+        let scaled = 16.0 * (height_m.max(0.0) / span_m);
+        let factor = 1.0 - 1.0 / (1.0 + scaled * scaled);
+        Ok(Self { factor })
+    }
+
+    /// Returns the induced-drag multiplier in `[0, 1]`.
+    pub const fn factor(self) -> f64 {
+        self.factor
     }
 }
 

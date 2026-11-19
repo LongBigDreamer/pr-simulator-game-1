@@ -480,7 +480,7 @@ fn countdown_nanosecond_boundary_and_record_start_failure_preserve_commit_order(
     let telemetry = configured.configuration.scenario.initial_telemetry();
     configured
         .record
-        .begin_tail(initial, telemetry, None)
+        .begin_tail(initial, telemetry, None, None)
         .unwrap();
     let initial_sample = *current.flight_record().unwrap().sample(0).unwrap();
     assert_eq!(

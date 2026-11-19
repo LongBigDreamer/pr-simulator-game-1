@@ -1,4 +1,4 @@
-use crate::aerodynamics::{HybridAerodynamicLoad, TailIncidence};
+use crate::aerodynamics::{DragBreakdown, HybridAerodynamicLoad, TailIncidence};
 use crate::aerodynamics_contract::HybridError;
 use crate::contact::{ContactError, TailContactShapeProvider, WaterContactGeometry};
 use crate::dynamics::{AircraftModel, FlightState, Gravity, Wrench};
@@ -115,6 +115,7 @@ pub struct TailFlightScenario {
     initial_telemetry: FlightTelemetry,
     profile: Option<TailControlProfile>,
     initial_tail_wrenches: [Option<Wrench>; 2],
+    initial_drag_breakdown: DragBreakdown,
 }
 
 impl TailFlightScenario {
@@ -156,6 +157,7 @@ impl TailFlightScenario {
             .map_err(TailFlightScenarioError::Telemetry)?,
             profile,
             initial_tail_wrenches: initial_loads.tail_wrenches(),
+            initial_drag_breakdown: initial_loads.drag_breakdown(),
         };
         Ok(scenario)
     }
@@ -193,6 +195,13 @@ impl TailFlightScenario {
     #[cfg_attr(verus_only, verus_spec(returns self.initial_tail_wrenches()))]
     pub const fn initial_tail_wrenches(&self) -> [Option<Wrench>; 2] {
         self.initial_tail_wrenches
+    }
+
+    /// Returns the drag decomposition evaluated during initial scenario validation.
+    #[cfg_attr(verus_only, vstd::prelude::verus_verify(dual_spec))]
+    #[cfg_attr(verus_only, verus_spec(returns self.initial_drag_breakdown()))]
+    pub const fn initial_drag_breakdown(&self) -> DragBreakdown {
+        self.initial_drag_breakdown
     }
 
     /// Returns the validated aircraft without software feedback parameters.

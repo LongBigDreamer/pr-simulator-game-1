@@ -104,6 +104,7 @@ verus! {
                         TailFlightTickOutcome::WaterContact(sample) => sample.wing_bending_factor(),
                     },
                     tail_wrenches: Some(report.tail_wrenches()),
+                    drag_breakdown: report.drag_breakdown(),
                     wind_at_cg_ned_mps: telemetry.wind_velocity_ned_mps, telemetry,
                 })
             },

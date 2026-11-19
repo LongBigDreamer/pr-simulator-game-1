@@ -332,6 +332,29 @@ impl UnitQuaternion {
         })
     }
 
+    /// Creates a quaternion from scalar-first `(w, x, y, z)` components
+    /// that were already normalized when they were produced, preserving
+    /// every component bit for bit.
+    ///
+    /// Values must be finite and within [`Self::UNIT_TOLERANCE`] of unit
+    /// length. Unlike [`Self::try_new`], which normalizes accepted
+    /// round-off before storage, this constructor stores the components
+    /// exactly as supplied. Normalizing an already normalized value is
+    /// not idempotent in floating-point arithmetic, so reconstruction
+    /// through [`Self::try_new`] can change the components of a produced
+    /// quaternion; this constructor keeps a serialize-and-reconstruct
+    /// round trip of produced values lossless.
+    pub fn try_from_normalized_components(components: [f64; 4]) -> Result<Self, MathError> {
+        if components.iter().any(|value| !value.is_finite()) {
+            return Err(MathError::NonFinite);
+        }
+        let norm = norm4(components);
+        if !norm.is_finite() || norm == 0.0 || (norm - 1.0).abs() > Self::UNIT_TOLERANCE {
+            return Err(MathError::InvalidQuaternion);
+        }
+        Ok(Self { components })
+    }
+
     /// Returns scalar-first `(w, x, y, z)` components.
     pub const fn components(self) -> [f64; 4] {
         self.components
