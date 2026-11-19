@@ -58,7 +58,7 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: . -> target
-          shared-key: check-${{ hashFiles('Cargo.toml') }}-verify
+          shared-key: check-native-v1
           save-if: 'false'
       - name: Install Windows compiler cache
         if: runner.os == 'Windows'
@@ -126,7 +126,7 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: . -> target
-          shared-key: check-${{ hashFiles('Cargo.toml') }}-verify
+          shared-key: check-native-v1
           save-if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy_pages)) }}
       - name: Install Windows compiler cache
         if: runner.os == 'Windows'
@@ -390,7 +390,7 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: . -> target
-          shared-key: check-${{ hashFiles('Cargo.toml') }}-verify
+          shared-key: check-native-v1
           save-if: 'false'
       - name: Restore optimized dependencies for the Wasm trace
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
@@ -502,7 +502,7 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: . -> target
-          key: check-native-${{ matrix.target }}-${{ hashFiles('Cargo.toml') }}
+          key: check-native-${{ matrix.target }}
           save-if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy_pages)) }}
       - name: Build ordinary native Screen and server executables
         run: cargo build -p birdman-game-bevy -p birdman-game-host --bins --features birdman-game-host/server-ui --locked
@@ -525,9 +525,31 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Restore fixed-toolchain proof dependencies
+        id: proof-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            target/direct-core-proof
+            target/verus-proof-tools/**/*.zip
+            ~/.cargo/registry/cache
+            ~/.cargo/git
+          key: proof-windows-2022-x64-${{ hashFiles('tools/verus/check-verus.ps1') }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml') }}
+          restore-keys: |
+            proof-windows-2022-x64-${{ hashFiles('tools/verus/check-verus.ps1') }}-
       - name: Verify production core and designated rejections
         shell: pwsh
         run: ./tools/verus/check-verus.ps1
+      - name: Save verified proof dependencies from trusted main
+        if: steps.proof-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.deploy_pages))
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            target/direct-core-proof
+            target/verus-proof-tools/**/*.zip
+            ~/.cargo/registry/cache
+            ~/.cargo/git
+          key: ${{ steps.proof-cache.outputs.cache-primary-key }}
 
   deploy:
     name: Deploy GitHub Pages

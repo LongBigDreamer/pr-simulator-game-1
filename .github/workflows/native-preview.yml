@@ -185,6 +185,11 @@ jobs:
         with:
           name: web-licenses-${{ needs.source.outputs.sha }}
           path: target/web-licenses
+      - name: Install native dependencies for the Web bundle verifier
+        timeout-minutes: 15
+        run: |
+          sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3 update --error-on=any
+          sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3 install -y --no-install-recommends pkg-config libudev-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-0
       - name: Include Web notices and finalize the bundle manifest
         run: |
           cp target/web-licenses/THIRD-PARTY-LICENSES.html web/dist/THIRD-PARTY-LICENSES.html

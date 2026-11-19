@@ -193,6 +193,8 @@ runnerは以下を要求する。
 - 保証範囲は本番関数の契約と複数操作のclientを正本とする。
 - 削除や範囲縮小は通常の差分レビューで確認する。
 - CIのVerus jobは同runnerを実行し、通常Rustのbuild・lint・関連回帰・no_std検査は別の保証として維持する。
+- CIは固定ツールの配布archiveと専用targetの依存成果物を復元する。キーはrunner・検証script・依存manifestを識別し、scriptの変更でtoolchainとverifierの組合せも更新する。保存はtrusted mainの検査に限定する。
+- 復元後もrunnerはcoreとruntimeの生成物をcleanし、本番の証明と指定した負例を毎回実行する。配布archiveのdigestとcompiler/verifierのバージョン照合も毎回行う。
 
 ## 信頼境界と残る検証
 
