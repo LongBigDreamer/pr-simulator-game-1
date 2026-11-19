@@ -1700,7 +1700,7 @@ dependencies = [
 
 [[package]]
 name = "birdman-game-app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "birdman-game-content",
  "birdman-game-core",
@@ -1717,7 +1717,7 @@ dependencies = [
 
 [[package]]
 name = "birdman-game-bevy"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bevy",
  "bevy_mod_openxr",
@@ -1740,7 +1740,7 @@ dependencies = [
 
 [[package]]
 name = "birdman-game-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "birdman-game-app",
  "birdman-game-content",
@@ -1752,7 +1752,7 @@ dependencies = [
 
 [[package]]
 name = "birdman-game-content"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "birdman-game-core",
  "birdman-game-format",
@@ -1762,7 +1762,7 @@ dependencies = [
 
 [[package]]
 name = "birdman-game-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libm",
  "polycool",
@@ -1771,7 +1771,7 @@ dependencies = [
 
 [[package]]
 name = "birdman-game-format"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "birdman-game-core",
  "ryu-js",
@@ -1783,7 +1783,7 @@ dependencies = [
 
 [[package]]
 name = "birdman-game-host"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "axum-server",
@@ -1814,7 +1814,7 @@ dependencies = [
 
 [[package]]
 name = "birdman-game-presentation"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "birdman-game-app",
  "birdman-game-content",
@@ -1832,7 +1832,7 @@ dependencies = [
 
 [[package]]
 name = "birdman-game-runtime"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "birdman-game-app",
  "birdman-game-content",
@@ -1851,7 +1851,7 @@ dependencies = [
 
 [[package]]
 name = "birdman-game-scene"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "birdman-game-app",
  "birdman-game-content",
@@ -1867,7 +1867,7 @@ dependencies = [
 
 [[package]]
 name = "birdman-game-wasm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "birdman-game-app",
  "birdman-game-presentation",
