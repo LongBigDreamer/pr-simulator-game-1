@@ -1,3 +1,5 @@
+extern crate std;
+
 use super::*;
 use crate::{
     BodyVector, NedPoint, NedVector, TailFlightTickInput, TailPilotIntent,
@@ -483,4 +485,92 @@ fn acceleration_estimate_matches_the_csv_stencil() {
     assert_eq!(record.series_derivative(&squares[..4], 2), None);
     let single = finalized(vec![velocity_sample(0, [0.0; 3], [0.0; 3], 0.0)]).unwrap();
     assert_eq!(single.acceleration_estimate(0), None);
+}
+
+#[test]
+fn whole_record_estimates_match_per_sample_estimates() {
+    let samples: Vec<_> = (0..5)
+        .map(|tick| {
+            let t = tick as f64 / 100.0;
+            velocity_sample(
+                tick,
+                [10.0 + 2.0 * t + 3.0 * t * t, t, 0.0],
+                [0.0, t * t, 0.0],
+                5.0 * t,
+            )
+        })
+        .collect();
+    let record = finalized(samples).unwrap();
+    let estimates = record.acceleration_estimates();
+    assert_eq!(estimates.len(), 5);
+    for (index, estimate) in estimates.iter().enumerate() {
+        assert_eq!(*estimate, record.acceleration_estimate(index));
+    }
+    let squares: Vec<f64> = (0..5)
+        .map(|tick| {
+            let t = tick as f64 / 100.0;
+            t * t
+        })
+        .collect();
+    let derivatives = record.series_derivatives(&squares).unwrap();
+    assert_eq!(derivatives.len(), 5);
+    for (index, derivative) in derivatives.iter().enumerate() {
+        assert_eq!(*derivative, record.series_derivative(&squares, index));
+    }
+    assert_eq!(record.series_derivatives(&squares[..4]), None);
+    let single = finalized(vec![velocity_sample(0, [0.0; 3], [0.0; 3], 0.0)]).unwrap();
+    assert_eq!(single.acceleration_estimates(), vec![None]);
+    assert_eq!(single.series_derivatives(&[1.0]), None);
+}
+
+#[test]
+fn whole_record_estimates_stay_fast_at_maximum_samples() {
+    let samples: Vec<_> = (0..MAX_FLIGHT_RECORD_SAMPLES as u64)
+        .map(|tick| {
+            let t = tick as f64 / 100.0;
+            velocity_sample(
+                tick,
+                [10.0 + t, 0.5 * t, 0.0],
+                [0.0, 0.01 * t, 0.0],
+                5.0 + t,
+            )
+        })
+        .collect();
+    let record = FlightRecord::try_from_finalized_samples(
+        header(MAX_FLIGHT_RECORD_TICKS as u64),
+        samples,
+        FlightRecordFinalization {
+            reason: SessionEndReason::TimeLimit,
+            disposition: FlightRecordDisposition::Complete,
+            terminal_tick: MAX_FLIGHT_RECORD_TICKS as u64,
+            terminal_fraction: 0.0,
+            score: None,
+            failure: None,
+            boundary_event: None,
+        },
+    )
+    .unwrap();
+    // The whole-record builds share one series construction per record. A
+    // per-sample rebuild is quadratic and takes seconds at this size, so a
+    // generous bound still separates the two.
+    let started = std::time::Instant::now();
+    let estimates = record.acceleration_estimates();
+    let acceleration_elapsed = started.elapsed();
+    assert_eq!(estimates.len(), MAX_FLIGHT_RECORD_SAMPLES);
+    assert!(estimates.iter().all(|estimate| estimate.is_some()));
+    assert!(
+        acceleration_elapsed.as_secs() < 5,
+        "whole-record acceleration estimates took {acceleration_elapsed:?}"
+    );
+    let totals: Vec<f64> = (0..MAX_FLIGHT_RECORD_SAMPLES)
+        .map(|index| index as f64)
+        .collect();
+    let started = std::time::Instant::now();
+    let derivatives = record.series_derivatives(&totals).unwrap();
+    let derivative_elapsed = started.elapsed();
+    assert_eq!(derivatives.len(), MAX_FLIGHT_RECORD_SAMPLES);
+    assert!(
+        derivative_elapsed.as_secs() < 5,
+        "whole-record series derivatives took {derivative_elapsed:?}"
+    );
 }

@@ -1,9 +1,9 @@
 use std::sync::OnceLock;
 
 use birdman_game_core::{
-    FlightEnergy, FlightRecord, FlightRecordPlaybackSample, FlightRecordQueryError,
-    FlightRecordSample, FlightState, FlightTelemetry, NedPoint, NedVector, TailControlReport,
-    TailPilotPositionCommand, WindError, flight_energy,
+    FlightEnergy, FlightRecord, FlightRecordAcceleration, FlightRecordPlaybackSample,
+    FlightRecordQueryError, FlightRecordSample, FlightState, FlightTelemetry, NedPoint, NedVector,
+    TailControlReport, TailPilotPositionCommand, WindError, flight_energy,
 };
 
 use super::{environment, types::*};
@@ -859,12 +859,14 @@ fn energy_series(
     }
 }
 
-/// Per-sample load factors [body-z, magnitude] under the supplied gravity.
-fn load_factor_at(record: &FlightRecord, gravity: f64, index: usize) -> Option<[f64; 2]> {
-    if gravity <= 0.0 {
-        return None;
-    }
-    let estimate = record.acceleration_estimate(index)?;
+/// Load factors [body-z, magnitude] of one sample from its acceleration
+/// estimate, under the supplied gravity.
+fn load_factor_from(
+    record: &FlightRecord,
+    gravity: f64,
+    index: usize,
+    estimate: FlightRecordAcceleration,
+) -> Option<[f64; 2]> {
     let [ax, ay, az] = estimate.datum_acceleration_ned_mps2;
     let specific = NedVector::try_new(ax, ay, az - gravity).ok()?;
     let body = record
@@ -877,6 +879,22 @@ fn load_factor_at(record: &FlightRecord, gravity: f64, index: usize) -> Option<[
         .components();
     let magnitude = (ax * ax + ay * ay + (az - gravity) * (az - gravity)).sqrt();
     Some([-body[2] / gravity, magnitude / gravity])
+}
+
+/// Per-sample load factors [body-z, magnitude] under the supplied gravity,
+/// sharing one acceleration-series build across the whole record.
+fn load_factors(record: &FlightRecord, gravity: f64) -> Vec<Option<[f64; 2]>> {
+    if gravity <= 0.0 {
+        return record.samples().iter().map(|_| None).collect();
+    }
+    record
+        .acceleration_estimates()
+        .into_iter()
+        .enumerate()
+        .map(|(index, estimate)| {
+            estimate.and_then(|estimate| load_factor_from(record, gravity, index, estimate))
+        })
+        .collect()
 }
 
 /// Incidence target of one recorded input: the mixed builtin target, or the
@@ -962,9 +980,7 @@ fn analysis_series_chart(
             );
         }
         GameUiAnalysisChart::Acceleration => {
-            let estimates: Vec<_> = (0..samples.len())
-                .map(|index| record.acceleration_estimate(index))
-                .collect();
+            let estimates = record.acceleration_estimates();
             let pick = |axis: usize, angular: bool| {
                 estimates
                     .iter()
@@ -1277,9 +1293,15 @@ fn analysis_series_chart(
                 .map(|energy| energy.map(|energy| energy.total_j()))
                 .collect();
             let values: Vec<Option<f64>> = match &totals {
-                Some(totals) => (0..samples.len())
-                    .map(|index| record.series_derivative(totals, index).map(|rate| -rate))
-                    .collect(),
+                Some(totals) => record
+                    .series_derivatives(totals)
+                    .map(|derivatives| {
+                        derivatives
+                            .into_iter()
+                            .map(|rate| rate.map(|rate| -rate))
+                            .collect()
+                    })
+                    .unwrap_or_else(|| samples.iter().map(|_| None).collect()),
                 None => samples.iter().map(|_| None).collect(),
             };
             fill_series(
@@ -1316,9 +1338,7 @@ fn analysis_series_chart(
         }
         GameUiAnalysisChart::LoadFactor => {
             let gravity = aircraft.map_or(0.0, |supply| supply.gravity.meters_per_second_squared());
-            let factors: Vec<Option<[f64; 2]>> = (0..samples.len())
-                .map(|index| load_factor_at(record, gravity, index))
-                .collect();
+            let factors = load_factors(record, gravity);
             fill_series(
                 chart,
                 record,
@@ -1421,18 +1441,23 @@ fn analysis_cursor_values(
             .map(Some)
             .collect(),
         GameUiAnalysisChart::Acceleration => {
+            let estimates = record.acceleration_estimates();
             let mut values = Vec::with_capacity(6);
             for axis in 0..3 {
                 values.push(derived_at(record, time, |index| {
-                    record
-                        .acceleration_estimate(index)
+                    estimates
+                        .get(index)
+                        .copied()
+                        .flatten()
                         .map(|estimate| estimate.datum_acceleration_ned_mps2[axis])
                 }));
             }
             for axis in 0..3 {
                 values.push(derived_at(record, time, |index| {
-                    record
-                        .acceleration_estimate(index)
+                    estimates
+                        .get(index)
+                        .copied()
+                        .flatten()
                         .map(|estimate| estimate.angular_acceleration_body_rad_s2[axis])
                 }));
             }
@@ -1530,9 +1555,12 @@ fn analysis_cursor_values(
                 .iter()
                 .map(|energy| energy.map(|energy| energy.total_j()))
                 .collect();
-            vec![match &totals {
-                Some(totals) => derived_at(record, time, |index| {
-                    record.series_derivative(totals, index).map(|rate| -rate)
+            let derivatives = totals
+                .as_ref()
+                .and_then(|totals| record.series_derivatives(totals));
+            vec![match &derivatives {
+                Some(derivatives) => derived_at(record, time, |index| {
+                    derivatives.get(index).copied().flatten().map(|rate| -rate)
                 }),
                 None => None,
             }]
@@ -1546,11 +1574,12 @@ fn analysis_cursor_values(
         }
         GameUiAnalysisChart::LoadFactor => {
             let gravity = aircraft.map_or(0.0, |supply| supply.gravity.meters_per_second_squared());
+            let factors = load_factors(record, gravity);
             let factor = derived_at(record, time, |index| {
-                load_factor_at(record, gravity, index).map(|value| value[0])
+                factors.get(index).copied().flatten().map(|value| value[0])
             });
             let magnitude = derived_at(record, time, |index| {
-                load_factor_at(record, gravity, index).map(|value| value[1])
+                factors.get(index).copied().flatten().map(|value| value[1])
             });
             vec![factor, magnitude]
         }
