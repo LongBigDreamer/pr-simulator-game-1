@@ -1029,38 +1029,19 @@ impl FlightRecord {
         if index >= self.samples.len() {
             return None;
         }
-        let axis = |series: &[[f64; 3]], axis: usize| {
-            let values: Vec<f64> = series.iter().map(|value| value[axis]).collect();
-            self.series_derivative(&values, index)
-        };
-        let datum_velocity: Vec<[f64; 3]> = self
-            .samples
-            .iter()
-            .map(|sample| sample.flight_state.datum_velocity_ned().components())
-            .collect();
-        let angular_velocity: Vec<[f64; 3]> = self
-            .samples
-            .iter()
-            .map(|sample| sample.flight_state.angular_velocity_body().components())
-            .collect();
-        let pilot_velocity: Vec<f64> = self
-            .samples
-            .iter()
-            .map(|sample| sample.flight_state.pilot_velocity_mps())
-            .collect();
-        Some(FlightRecordAcceleration {
-            datum_acceleration_ned_mps2: [
-                axis(&datum_velocity, 0)?,
-                axis(&datum_velocity, 1)?,
-                axis(&datum_velocity, 2)?,
-            ],
-            angular_acceleration_body_rad_s2: [
-                axis(&angular_velocity, 0)?,
-                axis(&angular_velocity, 1)?,
-                axis(&angular_velocity, 2)?,
-            ],
-            pilot_acceleration_mps2: self.series_derivative(&pilot_velocity, index)?,
-        })
+        AccelerationSeries::collect(self).estimate(index)
+    }
+
+    /// Estimates accelerations at every retained sample in one pass.
+    ///
+    /// The velocity series are built once and shared across all samples, so
+    /// the cost is linear in the sample count. Each entry matches
+    /// [`Self::acceleration_estimate`] at the same index.
+    pub fn acceleration_estimates(&self) -> Vec<Option<FlightRecordAcceleration>> {
+        let series = AccelerationSeries::collect(self);
+        (0..self.samples.len())
+            .map(|index| series.estimate(index))
+            .collect()
     }
 
     /// Differentiates a per-sample scalar series at one sample.
@@ -1073,14 +1054,34 @@ impl FlightRecord {
         if values.len() != self.samples.len() || values.len() < 2 {
             return None;
         }
-        let times: Vec<f64> = self
-            .samples
+        stencil_derivative(&self.sample_times(), values, index)
+    }
+
+    /// Differentiates a per-sample scalar series at every sample in one pass.
+    ///
+    /// The sample times are built once and shared across all samples, so the
+    /// cost is linear in the sample count. Returns `None` under the same
+    /// conditions as [`Self::series_derivative`]; each entry matches
+    /// [`Self::series_derivative`] at the same index.
+    pub fn series_derivatives(&self, values: &[f64]) -> Option<Vec<Option<f64>>> {
+        if values.len() != self.samples.len() || values.len() < 2 {
+            return None;
+        }
+        let times = self.sample_times();
+        Some(
+            (0..values.len())
+                .map(|index| stencil_derivative(&times, values, index))
+                .collect(),
+        )
+    }
+
+    fn sample_times(&self) -> Vec<f64> {
+        self.samples
             .iter()
             .map(|sample| {
                 (sample.tick_index as f64 + sample.fraction) / f64::from(self.header.physics_hz)
             })
-            .collect();
-        stencil_derivative(&times, values, index)
+            .collect()
     }
 
     #[cfg_attr(verus_only, verus_spec(outcome =>
@@ -1247,6 +1248,55 @@ fn elapsed_ticks(start: (u128, f64), end: (u128, f64)) -> f64 {
 /// Interior samples use the three-point central difference for nonuniform
 /// spacing; the ends use one-sided two-point differences. A degenerate or
 /// non-finite interval yields `None`, mirroring the CSV export estimate.
+/// Velocity series of one record, built once and shared by every
+/// acceleration estimate of that record.
+struct AccelerationSeries {
+    times: Vec<f64>,
+    datum_velocity: [Vec<f64>; 3],
+    angular_velocity: [Vec<f64>; 3],
+    pilot_velocity: Vec<f64>,
+}
+
+impl AccelerationSeries {
+    fn collect(record: &FlightRecord) -> Self {
+        let mut datum_velocity: [Vec<f64>; 3] = Default::default();
+        let mut angular_velocity: [Vec<f64>; 3] = Default::default();
+        let mut pilot_velocity = Vec::with_capacity(record.samples.len());
+        for sample in &record.samples {
+            let datum = sample.flight_state.datum_velocity_ned().components();
+            let angular = sample.flight_state.angular_velocity_body().components();
+            for axis in 0..3 {
+                datum_velocity[axis].push(datum[axis]);
+                angular_velocity[axis].push(angular[axis]);
+            }
+            pilot_velocity.push(sample.flight_state.pilot_velocity_mps());
+        }
+        Self {
+            times: record.sample_times(),
+            datum_velocity,
+            angular_velocity,
+            pilot_velocity,
+        }
+    }
+
+    fn estimate(&self, index: usize) -> Option<FlightRecordAcceleration> {
+        let axis = |values: &[f64]| stencil_derivative(&self.times, values, index);
+        Some(FlightRecordAcceleration {
+            datum_acceleration_ned_mps2: [
+                axis(&self.datum_velocity[0])?,
+                axis(&self.datum_velocity[1])?,
+                axis(&self.datum_velocity[2])?,
+            ],
+            angular_acceleration_body_rad_s2: [
+                axis(&self.angular_velocity[0])?,
+                axis(&self.angular_velocity[1])?,
+                axis(&self.angular_velocity[2])?,
+            ],
+            pilot_acceleration_mps2: axis(&self.pilot_velocity)?,
+        })
+    }
+}
+
 fn stencil_derivative(times: &[f64], values: &[f64], index: usize) -> Option<f64> {
     let count = values.len();
     if count < 2 || index >= count {
