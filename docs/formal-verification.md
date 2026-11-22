@@ -93,7 +93,7 @@
 
 - 要求待機中または同じ表示modeへの要求は、stateと保持資源を変更せずI/O要求を返さない。
 - 受理した要求は入力modeとrequest IDを次のpending stageへ保持し、返すprimitive要求と一致させる。Stopはactive資源、Startは保持permission資源を参照し、Screenはpermissionなしで開始できる。
-- request ID不一致または成功completionのstage不一致は、stateと両保持資源を変更しない。Failedは各pending stageの合法な失敗遷移として扱う。
+- request ID不一致または成功completionのstage不一致は、stateと両保持資源を変更しない。Failedは各pending stageの合法な失敗遷移であり、Failed { active, cause } へ移る。Permission中の失敗は保持中の表示modeをactiveとして引き継ぎ、その資源を保持する。それ以外の失敗はactiveを持たず、active資源を解放する。permission資源の所有はいずれのstageでも解消する。
 - 認可されたStartedは実資源IDをactiveとして保持し、permissionの所有を解消する。同IDの引継ぎを許容し、保持中IDをReleaseへ返さない。
 - 不一致completionが取得した未保持資源は、そのIDのReleaseを1件返す。`release_unused`も未保持Someに対して1件、保持IDに対して0件を返す。
 - closeは旧保持IDだけを昇順・重複なしでReleaseし、Closedと空の所有へ移る。
