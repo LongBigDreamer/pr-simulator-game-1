@@ -37,6 +37,8 @@ enum Operation {
     ConfigurationWrite(birdman_game_format::ConfigurationDocumentKind, u32),
     KeyboardRead(u32),
     KeyboardWrite(u32),
+    DisplaySettingsRead(u32),
+    DisplaySettingsWrite(u32),
     Controller(u64),
 }
 
@@ -110,6 +112,12 @@ impl ShutdownOwner {
             }
             ApplicationInput::KeyboardControlsSaved { request_id, .. } => {
                 Some(Operation::KeyboardWrite(*request_id))
+            }
+            ApplicationInput::DisplaySettingsLoaded { request_id, .. } => {
+                Some(Operation::DisplaySettingsRead(*request_id))
+            }
+            ApplicationInput::DisplaySettingsSaved { request_id, .. } => {
+                Some(Operation::DisplaySettingsWrite(*request_id))
             }
             ApplicationInput::PhoneSensorsStarted { resource_id, .. } => {
                 Some(Operation::StartPhone(*resource_id))
@@ -225,6 +233,12 @@ impl ShutdownOwner {
                 }
                 ApplicationRequest::WriteKeyboardControls { request_id, .. } => {
                     Some(Operation::KeyboardWrite(*request_id))
+                }
+                ApplicationRequest::ReadDisplaySettings { request_id, .. } => {
+                    Some(Operation::DisplaySettingsRead(*request_id))
+                }
+                ApplicationRequest::WriteDisplaySettings { request_id, .. } => {
+                    Some(Operation::DisplaySettingsWrite(*request_id))
                 }
                 ApplicationRequest::StartPhoneSensors { resource_id } => {
                     Some(Operation::StartPhone(*resource_id))

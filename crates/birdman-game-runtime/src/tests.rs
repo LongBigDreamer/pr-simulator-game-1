@@ -466,6 +466,134 @@ fn display_preferences_validate_restore_and_drain_only_the_latest_accepted_write
 }
 
 #[test]
+fn display_settings_write_pending_at_dispose_holds_closing_until_saved() {
+    use birdman_game_app::display_settings::DisplaySettings;
+    let mut runtime = LocalRuntime::new(ApplicationSession::default(), screen_platform()).unwrap();
+    let mut initial = runtime
+        .update(
+            ApplicationObservation {
+                observed_ms: 0.0,
+                input: ApplicationInput::Platform {
+                    observation: screen_platform(),
+                },
+            },
+            &mut no_text_metrics,
+        )
+        .unwrap();
+    let keyboard_request = initial
+        .requests
+        .iter()
+        .find_map(|request| match request {
+            ApplicationRequest::ReadKeyboardControls { request_id, .. } => Some(*request_id),
+            _ => None,
+        })
+        .unwrap();
+    let display_request = initial
+        .requests
+        .iter()
+        .find_map(|request| match request {
+            ApplicationRequest::ReadDisplaySettings { request_id, .. } => Some(*request_id),
+            _ => None,
+        })
+        .unwrap();
+    runtime
+        .observe_test(ApplicationInput::KeyboardControlsLoaded {
+            request_id: keyboard_request,
+            completion: ApplicationKeyboardControlsLoad::Missing,
+        })
+        .unwrap();
+    runtime
+        .observe_test(ApplicationInput::DisplaySettingsLoaded {
+            request_id: display_request,
+            completion: ApplicationDisplaySettingsLoad::Missing,
+        })
+        .unwrap();
+    initial.requests.retain(|request| {
+        !matches!(
+            request,
+            ApplicationRequest::ReadKeyboardControls { .. }
+                | ApplicationRequest::ReadDisplaySettings { .. }
+        )
+    });
+    let title = structure(finish_boot(&mut runtime, initial));
+    let setup = structure(activate(&mut runtime, &title, SessionCommand::OpenSetup {}));
+    let changed = DisplaySettings {
+        brightness: 0.5,
+        ..Default::default()
+    };
+    let output = activate(
+        &mut runtime,
+        &setup,
+        SessionCommand::SetDisplaySettings { settings: changed },
+    );
+    let write = output
+        .requests
+        .iter()
+        .find_map(|request| match request {
+            ApplicationRequest::WriteDisplaySettings { request_id, .. } => Some(*request_id),
+            _ => None,
+        })
+        .unwrap();
+    // Disposal with the write still in flight holds the lifecycle at Closing;
+    // the write must reach storage before the application drains.
+    let closing = runtime.observe_test(ApplicationInput::Dispose).unwrap();
+    assert_eq!(closing.lifecycle, ApplicationLifecycle::Closing);
+    let boot_resource = closing
+        .requests
+        .iter()
+        .find_map(|request| match request {
+            ApplicationRequest::ReleaseResources { resource_id } => Some(*resource_id),
+            _ => None,
+        })
+        .unwrap();
+    // Completing the resource release does not drain the application while
+    // the display-settings write is still in flight: the renderer is not
+    // released yet.
+    let released = runtime
+        .observe_test(ApplicationInput::ResourcesReleased {
+            resource_id: boot_resource,
+            failure: None,
+        })
+        .unwrap();
+    assert_eq!(released.lifecycle, ApplicationLifecycle::Closing);
+    assert!(
+        !released
+            .requests
+            .iter()
+            .any(|request| matches!(request, ApplicationRequest::ReleaseRenderer { .. }))
+    );
+    // The terminal save empties the tracked operations, so shutdown proceeds
+    // to releasing the renderer; the release completes the drain.
+    let saved = runtime
+        .observe_test(ApplicationInput::DisplaySettingsSaved {
+            request_id: write,
+            failure: None,
+        })
+        .unwrap();
+    assert_eq!(saved.lifecycle, ApplicationLifecycle::Closing);
+    let renderer = saved
+        .requests
+        .iter()
+        .find_map(|request| match request {
+            ApplicationRequest::ReleaseRenderer {
+                renderer_resource_id,
+            } => Some(*renderer_resource_id),
+            _ => None,
+        })
+        .unwrap();
+    let drained = runtime
+        .observe_test(ApplicationInput::RendererReleased {
+            renderer_resource_id: renderer,
+            failure: None,
+        })
+        .unwrap();
+    assert_eq!(drained.lifecycle, ApplicationLifecycle::Drained);
+    assert_eq!(runtime.authority.storage.display_notification(), "保存済み");
+    assert!(!runtime.authority.storage.display_needs_write());
+    assert_eq!(runtime.application().display_settings(), changed);
+}
+
+#[test]
 fn technical_errors_preserve_typed_sources_and_opaque_leaf_context() {
     use birdman_game_core::{FlightRecordQueryError, GameSessionError};
     use birdman_game_presentation::game_ui::GameUiError;
