@@ -1142,7 +1142,8 @@ impl FlightRecordSample {
         Ok(metadata) => metadata.reason == reason && metadata.terminal_tick == terminal_tick
             && metadata.terminal_tick == latest.tick_index
             && metadata.terminal_fraction == terminal_fraction && metadata.score == score
-            && metadata.failure == failure && metadata.boundary_event == boundary_event,
+            && metadata.failure == failure && metadata.boundary_event == boundary_event
+            && disposition_matches(reason, metadata.disposition),
         Err(_) => true,
     },
 ))]
@@ -1215,6 +1216,8 @@ fn failure_matches(failure: Option<TailFlightTickError>, reason: SessionEndReaso
     }
 }
 
+#[cfg_attr(verus_only, verus_verify(dual_spec))]
+#[cfg_attr(verus_only, verus_spec(returns disposition_matches(reason, disposition)))]
 fn disposition_matches(reason: SessionEndReason, disposition: FlightRecordDisposition) -> bool {
     matches!(
         (reason, disposition),

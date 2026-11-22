@@ -463,6 +463,18 @@ impl DisplayWorkflow {
                     final(self).ownership().1 == None
                         && final(self).ownership().2 == old(self).ownership().2
                         && final(self).pending_id() == Some(next_id),
+                (DisplayState::Permission { active: Some(active_mode), request_id, .. }, DisplayCompletion::Failed { cause })
+                    if request_id == completed_id =>
+                    final(self).ownership() == (DisplayState::Failed { active: Some(active_mode), cause }, old(self).ownership().1, None),
+                (DisplayState::Permission { active: None, request_id, .. }, DisplayCompletion::Failed { cause })
+                    if request_id == completed_id =>
+                    final(self).ownership() == (DisplayState::Failed { active: None, cause }, None, None),
+                (DisplayState::Stopping { request_id, .. }, DisplayCompletion::Failed { cause })
+                    if request_id == completed_id =>
+                    final(self).ownership() == (DisplayState::Failed { active: None, cause }, None, None),
+                (DisplayState::Starting { request_id, .. }, DisplayCompletion::Failed { cause })
+                    if request_id == completed_id =>
+                    final(self).ownership() == (DisplayState::Failed { active: None, cause }, None, None),
                 _ => true,
             },
     ))]

@@ -365,7 +365,7 @@ impl GameSession {
         requires old(self).projection_valid(),
             match old(self).lifecycle {
                 SessionLifecycle::Configured(configured) => match configured.phase {
-                    ConfiguredPhase::Countdown(countdown) => advance_clock.requires((countdown,))
+                    ConfiguredPhase::Countdown(countdown) => (token == countdown.token_value() ==> advance_clock.requires((countdown,)))
                         && initial_state.requires((&configured.configuration,))
                         && forall|state: FlightState| telemetry.requires((&configured.configuration, state)),
                     _ => true,
@@ -438,6 +438,9 @@ impl GameSession {
         let ConfiguredPhase::Countdown(countdown) = configured.phase else {
             return Ok(CountdownProgress::Ignored);
         };
+        if token != countdown.token() {
+            return Ok(CountdownProgress::Ignored);
+        }
         let advanced = advance_clock(countdown);
         let advance = match countdown.observe(token, advanced, frame_available) {
             Ok(advance) => advance,
