@@ -1692,7 +1692,7 @@ mod tests {
         let quality = birdman_game_runtime::ApplicationRenderQuality {
             scale: birdman_game_presentation::screen_render_scale::ScreenRenderScale::Half,
             shadow: birdman_game_presentation::screen_render_auto::ScreenShadowMap::Full,
-            water_quality: birdman_game_format::WaterQuality::High,
+            water_quality: birdman_game_runtime::WaterQuality::High,
         };
         gpu.candidates.insert(
             3,

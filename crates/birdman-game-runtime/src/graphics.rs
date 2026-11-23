@@ -1,4 +1,4 @@
-use birdman_game_format::WaterQuality;
+pub use birdman_game_format::WaterQuality;
 use birdman_game_presentation::game_ui::{
     GameUiPlatformCommand, GameUiPresentationMode, GameUiWaterQualityOperation,
 };

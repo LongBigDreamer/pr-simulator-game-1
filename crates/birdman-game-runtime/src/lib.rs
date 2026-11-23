@@ -93,6 +93,7 @@ pub use graphics::{
     ApplicationGpuQuery, ApplicationGpuTimingCapability, ApplicationGraphicsObservation,
     ApplicationGraphicsProjection, ApplicationGraphicsResource, ApplicationGraphicsTarget,
     ApplicationRenderQuality, ApplicationRendererObservation, ApplicationResourceCommit,
+    WaterQuality,
 };
 #[cfg(not(verus_only))]
 pub use scene::{

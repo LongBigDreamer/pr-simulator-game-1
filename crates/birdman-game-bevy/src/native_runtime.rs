@@ -223,8 +223,7 @@ fn route_controller(
     shared: &ControllerShared,
     immediate: &mut VecDeque<ApplicationInput>,
 ) {
-    use birdman_game_app::{ControllerIoObservation, ControllerIoRequest};
-    use birdman_game_format::external_controller::ControllerFault;
+    use birdman_game_app::{ControllerFault, ControllerIoObservation, ControllerIoRequest};
     let mut main = Vec::new();
     for request in std::mem::take(&mut output.requests) {
         match request {

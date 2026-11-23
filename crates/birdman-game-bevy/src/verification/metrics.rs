@@ -4,9 +4,9 @@ use bevy::{
     diagnostic::{Diagnostic, DiagnosticsStore, FrameTimeDiagnosticsPlugin},
     prelude::{Query, ResMut, Window},
 };
-use birdman_game_format::WaterQuality;
 use birdman_game_presentation::screen_render_auto::is_valid_gpu_work_ms;
 use birdman_game_runtime::ApplicationGraphicsResource;
+use birdman_game_runtime::WaterQuality;
 use std::{
     collections::{BTreeMap, BTreeSet},
     time::Instant,

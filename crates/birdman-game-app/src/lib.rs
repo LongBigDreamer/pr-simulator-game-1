@@ -1,7 +1,8 @@
 //! Application progression, prepared domain resources, record queries and archives.
 
 use birdman_game_core::ControlMode;
-use birdman_game_format::{AssistanceLevel, DifficultySettings, InformationLevel, WeatherClass};
+pub use birdman_game_format::WeatherClass;
+use birdman_game_format::{AssistanceLevel, DifficultySettings, InformationLevel};
 
 pub mod application;
 pub mod display_settings;
@@ -66,7 +67,7 @@ pub use aircraft::SelectedAircraft;
 
 mod controller;
 pub use controller::execution::{
-    ControllerExecutionFault, ControllerIoObservation, ControllerIoRequest,
+    ControllerExecutionFault, ControllerFault, ControllerIoObservation, ControllerIoRequest,
     SelectedControllerExecution,
 };
 pub use controller::{ControllerPreparationError, SelectedController};

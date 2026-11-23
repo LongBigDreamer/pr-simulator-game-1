@@ -179,7 +179,7 @@ fn capture_waits_for_quality_ack_and_accepts_an_existing_commit() {
     let expected = ApplicationRenderQuality {
         scale: ScreenRenderScale::Full,
         shadow: ScreenShadowMap::Full,
-        water_quality: birdman_game_format::WaterQuality::High,
+        water_quality: birdman_game_runtime::WaterQuality::High,
     };
     let renderer = ApplicationRendererObservation {
         resource_id: 1,
@@ -206,7 +206,7 @@ fn capture_waits_for_quality_ack_and_accepts_an_existing_commit() {
         &graphics, &renderer, expected
     ));
     graphics.resource.as_mut().unwrap().quality.water_quality =
-        birdman_game_format::WaterQuality::Low;
+        birdman_game_runtime::WaterQuality::Low;
     assert!(!driver::capture::quality_matches(
         &graphics, &renderer, expected
     ));
