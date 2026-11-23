@@ -1724,7 +1724,6 @@ dependencies = [
  "bevy_mod_xr",
  "birdman-game-app",
  "birdman-game-core",
- "birdman-game-format",
  "birdman-game-host",
  "birdman-game-presentation",
  "birdman-game-runtime",

@@ -820,7 +820,7 @@ pub(crate) mod tests {
         let quality = ApplicationRenderQuality {
             scale: birdman_game_presentation::screen_render_scale::ScreenRenderScale::Half,
             shadow: birdman_game_presentation::screen_render_auto::ScreenShadowMap::Quarter,
-            water_quality: birdman_game_format::WaterQuality::Low,
+            water_quality: birdman_game_runtime::WaterQuality::Low,
         };
         {
             let mut gpu = world.resource_mut::<NativeGpu>();

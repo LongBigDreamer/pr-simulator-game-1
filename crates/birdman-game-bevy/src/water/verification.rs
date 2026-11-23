@@ -16,7 +16,7 @@ use bevy::{
     shader::ShaderDefVal,
 };
 use birdman_game_app::environment_snapshot::{EnvironmentProjection, EnvironmentSelection};
-use birdman_game_format::WaterQuality;
+use birdman_game_runtime::WaterQuality;
 use birdman_game_scene::lake_water::{LakeVisualCondition, LakeWaveProjection};
 
 const SIDE: u32 = 16;

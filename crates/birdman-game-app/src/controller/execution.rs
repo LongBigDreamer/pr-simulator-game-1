@@ -171,7 +171,7 @@ pub enum ControllerIoObservation {
         cause: String,
     },
 }
-pub use birdman_game_format::external_controller::ControllerExecutionFault;
+pub use birdman_game_format::external_controller::{ControllerExecutionFault, ControllerFault};
 
 #[derive(Default)]
 pub(crate) struct ControllerExecutionState {

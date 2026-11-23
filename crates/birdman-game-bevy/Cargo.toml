@@ -9,12 +9,12 @@ description = "Native Screen adapter for the existing Birdman hybrid game sessio
 
 [features]
 default = []
-verify-harness = []
+verify-harness = ["dep:birdman-game-core"]
 openxr = ["dep:bevy_mod_openxr", "dep:bevy_mod_xr", "dep:openxr"]
 
 [dependencies]
 birdman-game-app.workspace = true
-birdman-game-core.workspace = true
+birdman-game-core = { workspace = true, optional = true }
 birdman-game-presentation.workspace = true
 birdman-game-runtime.workspace = true
 birdman-game-scene.workspace = true
@@ -22,7 +22,6 @@ birdman-game-scene.workspace = true
 [target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
 birdman-game-host.workspace = true
 tokio = { version = "=1.53.2", default-features = false, features = ["sync"] }
-birdman-game-format.workspace = true
 rfd = "=0.15.4"
 serde.workspace = true
 serde_json.workspace = true
