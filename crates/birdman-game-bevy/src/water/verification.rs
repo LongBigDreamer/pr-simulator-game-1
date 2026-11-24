@@ -17,7 +17,7 @@ use bevy::{
 };
 use birdman_game_app::environment_snapshot::{EnvironmentProjection, EnvironmentSelection};
 use birdman_game_runtime::WaterQuality;
-use birdman_game_scene::lake_water::{LakeVisualCondition, LakeWaveProjection};
+use birdman_game_runtime::{LakeVisualCondition, LakeWaveProjection};
 
 const SIDE: u32 = 16;
 const CASES: [(&str, WaterQuality, bool, bool, bool); 6] = [
@@ -237,19 +237,17 @@ fn setup(
         if detail_cutoff {
             base.wave_count = 0;
         }
-        let geometry = match birdman_game_scene::lake_water_mesh::PreparedWaterGeometry::try_new(
-            quality,
-            &projection,
-        ) {
-            Ok(geometry) => geometry,
-            Err(cause) => {
-                verification.state = ProbeState::Failed(format!(
-                    "Shader probe bounds: {}",
-                    birdman_game_app::technical_error_text(&cause)
-                ));
-                return;
-            }
-        };
+        let geometry =
+            match birdman_game_runtime::PreparedWaterGeometry::try_new(quality, &projection) {
+                Ok(geometry) => geometry,
+                Err(cause) => {
+                    verification.state = ProbeState::Failed(format!(
+                        "Shader probe bounds: {}",
+                        birdman_game_app::technical_error_text(&cause)
+                    ));
+                    return;
+                }
+            };
         let bounds = Vec2::from_array(geometry.displacement_meters.map(|value| value as f32));
         for (output_index, output) in ProbeOutput::ALL.into_iter().enumerate() {
             let layers = probe_layers(case_index * ProbeOutput::ALL.len() + output_index);

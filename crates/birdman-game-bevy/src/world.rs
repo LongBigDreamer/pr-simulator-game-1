@@ -39,8 +39,8 @@ use std::collections::BTreeMap;
 pub(crate) use super::projection::pose_transform;
 
 pub(crate) const SCENE_SUN_ILLUMINANCE_LUX: f32 = 18_000.0;
-const SCENE_EXPOSURE_SCALE: f32 = birdman_game_scene::lake_sky::LAKE_SCENE_LIGHTING
-    .sunlight_irradiance as f32
+const SCENE_EXPOSURE_SCALE: f32 = birdman_game_runtime::LAKE_SCENE_LIGHTING.sunlight_irradiance
+    as f32
     / SCENE_SUN_ILLUMINANCE_LUX;
 
 pub(crate) fn scene_exposure() -> Exposure {
@@ -93,7 +93,7 @@ struct Candidate {
     water_root: Entity,
     sun: Entity,
     illuminance: f32,
-    initial_shadow: Option<birdman_game_scene::lake_sky::LakeSceneShadow>,
+    initial_shadow: Option<birdman_game_runtime::LakeSceneShadow>,
     output: Option<Handle<Image>>,
     #[cfg(all(feature = "openxr", any(target_os = "windows", target_os = "linux")))]
     xr_display: Option<u32>,
@@ -2511,9 +2511,9 @@ mod tests {
             }]
         ));
         assert!(!world.resource::<NativeGpu>().candidates.contains_key(&3));
-        let bounds = birdman_game_scene::lake_sky::LakeSceneShadow::for_aircraft(
+        let bounds = birdman_game_runtime::LakeSceneShadow::for_aircraft(
             [0.0; 3],
-            birdman_game_scene::lake_sky::LakeSunlight {
+            birdman_game_runtime::LakeSunlight {
                 direction: [0.0, 1.0, 0.0],
                 daylight: true,
             },
