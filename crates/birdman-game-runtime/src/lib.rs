@@ -74,6 +74,14 @@ pub use assets::{
     ApplicationWaterDetailAsset,
 };
 #[cfg(not(verus_only))]
+pub use birdman_game_scene::lake_sky::{LAKE_SCENE_LIGHTING, LakeSceneShadow, LakeSunlight};
+#[cfg(not(verus_only))]
+pub use birdman_game_scene::lake_water::{
+    LakeVisualCondition, LakeWaveProjection, MAX_LAKE_WAVE_COMPONENTS,
+};
+#[cfg(not(verus_only))]
+pub use birdman_game_scene::lake_water_mesh::PreparedWaterGeometry;
+#[cfg(not(verus_only))]
 pub use boot::{ApplicationRendererCreation, application_startup_html};
 #[cfg(not(verus_only))]
 pub use gamepad::ApplicationGamepadObservation;

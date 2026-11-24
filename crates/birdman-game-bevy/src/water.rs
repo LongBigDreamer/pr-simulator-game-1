@@ -20,8 +20,8 @@ use bevy::{
     },
     shader::{ShaderDefVal, ShaderRef},
 };
+use birdman_game_runtime::MAX_LAKE_WAVE_COMPONENTS;
 use birdman_game_runtime::{ApplicationLightingAssets, ApplicationWaterAssets};
-use birdman_game_scene::lake_water::MAX_LAKE_WAVE_COMPONENTS;
 
 #[path = "water/detail_mips.rs"]
 pub(crate) mod detail_mips;

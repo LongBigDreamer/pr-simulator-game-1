@@ -1727,7 +1727,6 @@ dependencies = [
  "birdman-game-host",
  "birdman-game-presentation",
  "birdman-game-runtime",
- "birdman-game-scene",
  "openxr",
  "parley",
  "rfd",

@@ -16,7 +16,7 @@ const allowed = new Map<string, readonly string[]>([
   ["birdman-game-presentation", ["birdman-game-app", "birdman-game-core", "birdman-game-format", "serde", "serde_json", "time", "unicode-width"]],
   ["birdman-game-scene", ["birdman-game-app", "birdman-game-content", "birdman-game-core", "birdman-game-format", "serde", "serde_json", "sha2", "earcut"]],
   ["birdman-game-host", ["birdman-game-app", "birdman-game-format", "birdman-game-presentation", "birdman-game-runtime", "serde", "serde_json", "sha2", "url"]],
-  ["birdman-game-bevy", ["birdman-game-app", "birdman-game-core", "birdman-game-presentation", "birdman-game-runtime", "birdman-game-scene", "bevy", "serde", "serde_json"]]
+  ["birdman-game-bevy", ["birdman-game-app", "birdman-game-core", "birdman-game-presentation", "birdman-game-runtime", "bevy", "serde", "serde_json"]]
 ]);
 
 const excludedNativeFeatures = new Set([
