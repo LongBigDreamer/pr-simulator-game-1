@@ -3,7 +3,7 @@ use bevy::{
     input::gamepad::{GamepadAxis, GamepadConnection, GamepadConnectionEvent, RawGamepadEvent},
     prelude::*,
 };
-use birdman_game_app::flight_input::FlightDeviceIdentity;
+use birdman_game_runtime::FlightDeviceIdentity;
 use birdman_game_runtime::{ApplicationGamepadObservation, ApplicationInput};
 use std::collections::BTreeMap;
 
@@ -223,7 +223,7 @@ mod tests {
             {
                 *display_resource_id = display;
                 *xr = display.map(|_| birdman_game_runtime::ApplicationXrFrameObservation {
-                    visibility: birdman_game_app::application::XrVisibility::Visible,
+                    visibility: birdman_game_runtime::XrVisibility::Visible,
                     input_focused: true,
                     observation: birdman_game_presentation::xr::XrViewerObservation {
                         source: birdman_game_presentation::xr::XrViewerSource::RuntimeDerived,

@@ -81,21 +81,18 @@ fn shared_widgets_retain_values_and_forward_controls_and_chart_io_with_their_sou
         ),
         (Display::Flex, px(12), px(17))
     );
-    let mut runtime = ApplicationRuntime::new(
-        birdman_game_app::application::ApplicationSession::default(),
-        ApplicationPlatformObservation {
-            location: None,
-            gpu_timing_requested: false,
-            renderer: None,
-            surface: None,
-            viewport: GameUiViewport {
-                width: 1280.0,
-                height: 720.0,
-                root_font_size: 16.0,
-            },
-            capabilities: ApplicationCapabilities::default(),
+    let mut runtime = ApplicationRuntime::new_default(ApplicationPlatformObservation {
+        location: None,
+        gpu_timing_requested: false,
+        renderer: None,
+        surface: None,
+        viewport: GameUiViewport {
+            width: 1280.0,
+            height: 720.0,
+            root_font_size: 16.0,
         },
-    )
+        capabilities: ApplicationCapabilities::default(),
+    })
     .unwrap();
     let mut measure = |_: &birdman_game_runtime::ApplicationTextProbe| {
         Err(birdman_game_presentation::xr::MenuLayoutFailure::MeasurementUnavailable)

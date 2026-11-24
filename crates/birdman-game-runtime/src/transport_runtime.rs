@@ -58,6 +58,12 @@ impl ApplicationRuntime {
             )?))),
         })
     }
+    /// Adopts the canonical default application as the local authority.
+    pub fn new_default(
+        platform: ApplicationPlatformObservation,
+    ) -> Result<Self, ApplicationRuntimeError> {
+        Self::new(ApplicationSession::default(), platform)
+    }
     /// Resolves the document's same-origin host before creating a local domain session.
     pub fn discover(
         platform: ApplicationPlatformObservation,

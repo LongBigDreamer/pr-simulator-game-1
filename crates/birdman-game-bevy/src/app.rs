@@ -54,7 +54,7 @@ use std::{error::Error, path::PathBuf};
 
 #[cfg(feature = "verify-harness")]
 const MAX_FRAME_DELTA: std::time::Duration = std::time::Duration::from_millis(
-    birdman_game_app::MAXIMUM_FLIGHT_FRAME_GAP_MILLISECONDS as u64,
+    birdman_game_runtime::MAXIMUM_FLIGHT_FRAME_GAP_MILLISECONDS as u64,
 );
 
 #[derive(Resource)]
