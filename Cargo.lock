@@ -1782,9 +1782,15 @@ dependencies = [
 name = "birdman-game-host"
 version = "0.2.0"
 dependencies = [
+ "birdman-game-app",
  "birdman-game-native-io",
+ "birdman-game-presentation",
  "birdman-game-runtime",
  "eframe",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
 ]
 
 [[package]]

@@ -7,12 +7,6 @@ license.workspace = true
 repository.workspace = true
 description = "Native operating-system and network I/O executing the shared runtime's requests"
 
-# The live-clock journey runs explicitly with the production release profile.
-[[test]]
-name = "remote_session"
-path = "tests/remote_session.rs"
-test = false
-
 [dependencies]
 birdman-game-app.workspace = true
 birdman-game-format.workspace = true

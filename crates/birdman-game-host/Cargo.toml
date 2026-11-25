@@ -13,6 +13,12 @@ name = "birdman-game-server"
 path = "src/bin/server.rs"
 required-features = ["server-ui"]
 
+# The live-clock journey runs explicitly with the production release profile.
+[[test]]
+name = "remote_session"
+path = "tests/remote_session.rs"
+test = false
+
 [features]
 server-ui = ["dep:eframe"]
 
@@ -20,6 +26,14 @@ server-ui = ["dep:eframe"]
 birdman-game-native-io.workspace = true
 birdman-game-runtime.workspace = true
 eframe = { version = "=0.33.3", default-features = false, features = ["glow", "wayland", "x11"], optional = true }
+
+[dev-dependencies]
+birdman-game-app.workspace = true
+birdman-game-presentation.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio = { version = "=1.53.2", default-features = false, features = ["sync"] }
 
 [lints]
 workspace = true

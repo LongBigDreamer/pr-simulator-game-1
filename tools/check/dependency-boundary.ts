@@ -128,8 +128,10 @@ function isNativeHostTransportDependency(crate: string, dependency: Record<strin
 }
 
 function isHostTestDependency(crate: string, dependency: Record<string, unknown>): boolean {
-  return crate === "birdman-game-native-io" && dependency.name === "birdman-game-core"
-    && dependency.kind === "dev" && dependency.target === null && dependency.optional === false;
+  return dependency.kind === "dev" && dependency.target === null && dependency.optional === false
+    && (crate === "birdman-game-native-io" && dependency.name === "birdman-game-core"
+      || crate === "birdman-game-host" && typeof dependency.name === "string"
+      && ["birdman-game-app", "birdman-game-presentation", "serde", "serde_json", "sha2", "tokio"].includes(dependency.name));
 }
 
 function isNativeGpuIoDependency(crate: string, dependency: Record<string, unknown>): boolean {
