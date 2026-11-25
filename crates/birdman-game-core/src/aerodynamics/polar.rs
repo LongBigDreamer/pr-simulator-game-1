@@ -212,6 +212,43 @@ impl StaticPolarRow {
         self.coefficients
     }
 }
+/// One height slice of a static polar, at a fixed height ratio (h / b).
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(verus_only, vstd::prelude::verus_verify)]
+pub struct StaticPolarHeightLevel<'a> {
+    height_ratio: f64,
+    rows: &'a [StaticPolarRow],
+}
+
+impl<'a> StaticPolarHeightLevel<'a> {
+    /// Creates a level; knot matching against the base table is checked
+    /// when the level is attached to a table.
+    pub fn try_new(height_ratio: f64, rows: &'a [StaticPolarRow]) -> Result<Self, AeroError> {
+        if !height_ratio.is_finite() {
+            return Err(AeroError::NonFinite);
+        }
+        if height_ratio <= 0.0
+            || height_ratio > 1.0
+            || rows.len() < 2
+            || rows
+                .windows(2)
+                .any(|pair| pair[0].alpha_rad >= pair[1].alpha_rad)
+        {
+            return Err(AeroError::InvalidPolarTable);
+        }
+        continuation::validate(rows)?;
+        Ok(Self { height_ratio, rows })
+    }
+
+    /// Returns this level's height ratio (h / b).
+    pub const fn height_ratio(self) -> f64 {
+        self.height_ratio
+    }
+    /// Returns this level's coefficient rows.
+    pub const fn rows(self) -> &'a [StaticPolarRow] {
+        self.rows
+    }
+}
 
 /// A borrowed full-aircraft polar with one common reference and a fixed body moment point P.
 ///
@@ -237,6 +274,7 @@ impl StaticPolarRow {
 #[cfg_attr(verus_only, vstd::prelude::verus_verify)]
 pub struct StaticPolar<'a> {
     rows: &'a [StaticPolarRow],
+    height_levels: &'a [StaticPolarHeightLevel<'a>],
     reference: ElementReference,
     moment_point_from_datum: BodyPoint,
     moment_axes: PolarMomentAxes,
@@ -261,6 +299,7 @@ impl<'a> StaticPolar<'a> {
         }
         continuation::validate(rows)?;
         Ok(Self {
+            height_levels: &[],
             rows,
             reference,
             moment_point_from_datum,
@@ -327,6 +366,84 @@ impl<'a> StaticPolar<'a> {
         first
             .coefficients
             .interpolate(second.coefficients, fraction)
+    }
+    /// Attaches validated height levels whose knots match the base table.
+    pub fn with_height_levels(
+        mut self,
+        height_levels: &'a [StaticPolarHeightLevel<'a>],
+    ) -> Result<Self, AeroError> {
+        if height_levels
+            .windows(2)
+            .any(|pair| pair[0].height_ratio >= pair[1].height_ratio)
+        {
+            return Err(AeroError::InvalidPolarTable);
+        }
+        for level in height_levels {
+            if level.rows.len() != self.rows.len()
+                || level
+                    .rows
+                    .iter()
+                    .zip(self.rows.iter())
+                    .any(|(level_row, base_row)| level_row.alpha_rad != base_row.alpha_rad)
+            {
+                return Err(AeroError::InvalidPolarTable);
+            }
+        }
+        self.height_levels = height_levels;
+        Ok(self)
+    }
+
+    /// Returns the attached height levels, empty when the table has none.
+    pub const fn height_levels(self) -> &'a [StaticPolarHeightLevel<'a>] {
+        self.height_levels
+    }
+
+    /// Interpolates at an angle of attack and a height ratio (h / b).
+    /// Levels below the lowest slice clamp to it; the free-air table is
+    /// the slice at height ratio 1.0. Without levels this is `coefficients_at`.
+    pub fn coefficients_at_height(
+        self,
+        alpha_rad: f64,
+        height_ratio: f64,
+    ) -> Result<StaticPolarCoefficients, AeroError> {
+        if !height_ratio.is_finite() {
+            return Err(AeroError::NonFinite);
+        }
+        if self.height_levels.is_empty() || height_ratio >= 1.0 {
+            return self.coefficients_at(alpha_rad);
+        }
+        let at_level = |level: StaticPolarHeightLevel<'a>| {
+            Self {
+                rows: level.rows,
+                height_levels: &[],
+                ..self
+            }
+            .coefficients_at(alpha_rad)
+        };
+        let first = self.height_levels[0];
+        if height_ratio <= first.height_ratio {
+            return at_level(first);
+        }
+        let last = self.height_levels[self.height_levels.len() - 1];
+        if height_ratio > last.height_ratio {
+            let low = at_level(last)?;
+            let base = self.coefficients_at(alpha_rad)?;
+            let fraction = (height_ratio - last.height_ratio) / (1.0 - last.height_ratio);
+            return low.interpolate(base, fraction);
+        }
+        let upper = self
+            .height_levels
+            .partition_point(|level| level.height_ratio < height_ratio);
+        let second = self.height_levels[upper];
+        if height_ratio == second.height_ratio {
+            return at_level(second);
+        }
+        let first_level = self.height_levels[upper - 1];
+        let low = at_level(first_level)?;
+        let high = at_level(second)?;
+        let fraction = (height_ratio - first_level.height_ratio)
+            / (second.height_ratio - first_level.height_ratio);
+        low.interpolate(high, fraction)
     }
 
     /// Computes the whole-aircraft surface-effect factor for a flight state.

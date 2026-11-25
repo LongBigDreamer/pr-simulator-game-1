@@ -39,8 +39,8 @@ pub use aerodynamics::{
     FlowAngles, GroundEffect, HybridAerodynamicLoad, HybridAnchor, HybridEvaluation, HybridModel,
     HybridProxy, HybridSection, HybridSurface, HybridSurfaceGeometry, PlanformSymmetry,
     PolarAnalysisMethod, PolarMomentAxes, StaticPolar, StaticPolarCoefficients,
-    StaticPolarEvaluation, StaticPolarLoad, StaticPolarMetadata, StaticPolarRow, TailAerodynamics,
-    TailIncidence, UniformAir,
+    StaticPolarEvaluation, StaticPolarHeightLevel, StaticPolarLoad, StaticPolarMetadata,
+    StaticPolarRow, TailAerodynamics, TailIncidence, UniformAir,
 };
 pub use aerodynamics_contract::{
     AeroError, AerodynamicEvaluationError, AerodynamicStage, HybridError, HybridFlowKind,
