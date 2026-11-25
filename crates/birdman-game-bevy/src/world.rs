@@ -1800,8 +1800,7 @@ mod tests {
         );
         assert!(poll(&mut world).is_empty());
         let runtime = NativeRuntime::from_runtime(
-            birdman_game_runtime::ApplicationRuntime::new(
-                birdman_game_app::application::ApplicationSession::default(),
+            birdman_game_runtime::ApplicationRuntime::new_default(
                 birdman_game_runtime::ApplicationPlatformObservation {
                     location: None,
                     gpu_timing_requested: false,

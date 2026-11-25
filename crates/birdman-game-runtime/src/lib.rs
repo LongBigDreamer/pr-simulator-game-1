@@ -74,6 +74,17 @@ pub use assets::{
     ApplicationWaterDetailAsset,
 };
 #[cfg(not(verus_only))]
+pub use birdman_game_app::application::SessionCommand;
+#[cfg(not(verus_only))]
+pub use birdman_game_app::display_settings::{DisplayAdjustment, DisplaySettings};
+#[cfg(not(verus_only))]
+pub use birdman_game_app::flight_input::FlightDeviceIdentity;
+#[cfg(not(verus_only))]
+pub use birdman_game_app::{
+    ControllerFault, ControllerIoObservation, ControllerIoRequest,
+    MAXIMUM_FLIGHT_FRAME_GAP_MILLISECONDS, WeatherClass, technical_error_text,
+};
+#[cfg(not(verus_only))]
 pub use birdman_game_scene::lake_sky::{LAKE_SCENE_LIGHTING, LakeSceneShadow, LakeSunlight};
 #[cfg(not(verus_only))]
 pub use birdman_game_scene::lake_water::{
@@ -179,14 +190,16 @@ pub use phone::{
 };
 
 #[cfg(not(verus_only))]
+pub use birdman_game_app::application::XrVisibility;
+#[cfg(not(verus_only))]
 use birdman_game_app::application::{
     ApplicationError, ApplicationSession, BackendReadiness, ExternalPauseReason,
-    PresentationObservation, XrAvailability, XrVisibility,
+    PresentationObservation, XrAvailability,
 };
 #[cfg(not(verus_only))]
-use birdman_game_app::environment_snapshot::{
-    EnvironmentIdentity, EnvironmentProjection, EnvironmentSelection,
-};
+use birdman_game_app::environment_snapshot::EnvironmentIdentity;
+#[cfg(not(verus_only))]
+pub use birdman_game_app::environment_snapshot::{EnvironmentProjection, EnvironmentSelection};
 #[cfg(not(verus_only))]
 use birdman_game_app::flight_input::{
     FlightActionKey, FlightControlKey, FlightGamepadObservation, FlightKeyObservation,

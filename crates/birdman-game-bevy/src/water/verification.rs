@@ -15,8 +15,8 @@ use bevy::{
     },
     shader::ShaderDefVal,
 };
-use birdman_game_app::environment_snapshot::{EnvironmentProjection, EnvironmentSelection};
 use birdman_game_runtime::WaterQuality;
+use birdman_game_runtime::{EnvironmentProjection, EnvironmentSelection};
 use birdman_game_runtime::{LakeVisualCondition, LakeWaveProjection};
 
 const SIDE: u32 = 16;
@@ -165,14 +165,14 @@ fn setup(
                 .map_err(|cause| {
                     format!(
                         "Shader probe environment: {}",
-                        birdman_game_app::technical_error_text(&cause)
+                        birdman_game_runtime::technical_error_text(&cause)
                     )
                 })?
                 .resolve()
                 .map_err(|cause| {
                     format!(
                         "Shader probe environment: {}",
-                        birdman_game_app::technical_error_text(&cause)
+                        birdman_game_runtime::technical_error_text(&cause)
                     )
                 })?
             else {
@@ -189,7 +189,7 @@ fn setup(
             .map_err(|cause| {
                 format!(
                     "Shader probe waves: {}",
-                    birdman_game_app::technical_error_text(&cause)
+                    birdman_game_runtime::technical_error_text(&cause)
                 )
             })
         })()
@@ -210,7 +210,7 @@ fn setup(
             Err(cause) => {
                 verification.state = ProbeState::Failed(format!(
                     "Shader probe projection: {}",
-                    birdman_game_app::technical_error_text(&cause)
+                    birdman_game_runtime::technical_error_text(&cause)
                 ));
                 return;
             }
@@ -243,7 +243,7 @@ fn setup(
                 Err(cause) => {
                     verification.state = ProbeState::Failed(format!(
                         "Shader probe bounds: {}",
-                        birdman_game_app::technical_error_text(&cause)
+                        birdman_game_runtime::technical_error_text(&cause)
                     ));
                     return;
                 }

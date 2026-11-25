@@ -31,15 +31,15 @@ use bevy::input::{
 use bevy::{
     camera::RenderTarget, diagnostic::DiagnosticsStore, ecs as bevy_ecs, prelude::*, shader::Shader,
 };
-use birdman_game_app::WeatherClass;
-use birdman_game_app::application::SessionCommand;
 use birdman_game_core::SessionPhase;
 use birdman_game_presentation::{
     game_ui::*,
     screen_render_auto::{ScreenRenderAutoStatus, ScreenShadowMap},
     screen_render_scale::ScreenRenderScale,
 };
+use birdman_game_runtime::SessionCommand;
 use birdman_game_runtime::WaterQuality;
+use birdman_game_runtime::WeatherClass;
 use birdman_game_runtime::{ApplicationInput, ApplicationRenderQuality};
 use std::{
     path::PathBuf,
@@ -387,7 +387,7 @@ impl Verification {
             }));
         }
         if adapter_input {
-            use birdman_game_app::display_settings::DisplaySettings;
+            use birdman_game_runtime::DisplaySettings;
             checks.extend([
                 platform(GameUiPlatformCommand::SetScreenRenderAuto { enabled: false }),
                 platform(GameUiPlatformCommand::SetScreenRenderScale {

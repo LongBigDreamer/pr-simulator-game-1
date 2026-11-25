@@ -3,7 +3,7 @@ use bevy::{
     render::{render_resource::RenderPipelineDescriptor, view::ColorGrading},
     shader::ShaderDefVal,
 };
-use birdman_game_app::display_settings::DisplayAdjustment;
+use birdman_game_runtime::DisplayAdjustment;
 
 /// Transfers the completed linear transform into Bevy's existing per-view
 /// exposure and ASC slope/offset. Equal sections make the transform independent
@@ -47,7 +47,7 @@ pub(crate) fn disable_inline_tonemapping(descriptor: &mut RenderPipelineDescript
 mod tests {
     use super::*;
     use bevy::render::view::ColorGradingUniform;
-    use birdman_game_app::display_settings::DisplaySettings;
+    use birdman_game_runtime::DisplaySettings;
 
     #[test]
     fn view_uniform_retains_the_shared_linear_transform_including_negative_channels() {

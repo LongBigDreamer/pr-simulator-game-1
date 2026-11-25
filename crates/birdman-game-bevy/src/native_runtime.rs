@@ -1,6 +1,5 @@
 use bevy::ecs as bevy_ecs;
 use bevy::prelude::*;
-use birdman_game_app::application::ApplicationSession;
 use birdman_game_presentation::game_ui::GameUiPresentationMode;
 use birdman_game_runtime::{
     ApplicationCapabilities, ApplicationDrawingOutput, ApplicationInput, ApplicationLifecycle,
@@ -80,7 +79,7 @@ impl NativeRuntime {
     pub(crate) fn new(
         platform: ApplicationPlatformObservation,
     ) -> Result<Self, ApplicationRuntimeError> {
-        ApplicationRuntime::new(ApplicationSession::default(), platform).map(Self::from_runtime)
+        ApplicationRuntime::new_default(platform).map(Self::from_runtime)
     }
     pub(crate) fn from_runtime(runtime: ApplicationRuntime) -> Self {
         Self(Arc::new(Mutex::new(runtime)))
@@ -223,7 +222,7 @@ fn route_controller(
     shared: &ControllerShared,
     immediate: &mut VecDeque<ApplicationInput>,
 ) {
-    use birdman_game_app::{ControllerFault, ControllerIoObservation, ControllerIoRequest};
+    use birdman_game_runtime::{ControllerFault, ControllerIoObservation, ControllerIoRequest};
     let mut main = Vec::new();
     for request in std::mem::take(&mut output.requests) {
         match request {
@@ -329,7 +328,7 @@ fn drain_controller(
         while let Some(input) = inputs.pop_front() {
             let mut output = owner.update(ApplicationObservation { observed_ms: native_now(shared, virtual_now), input },
                 &mut |_| Err(birdman_game_presentation::xr::MenuLayoutFailure::MeasurementUnavailable))
-                .map_err(|cause| birdman_game_app::technical_error_text(&cause))?;
+                .map_err(|cause| birdman_game_runtime::technical_error_text(&cause))?;
             route_controller(&mut output, io, shared, &mut inputs);
             retain_continuation(output, io)?;
             if inputs.len() > 32 {
@@ -389,7 +388,7 @@ fn begin_native(
     let virtual_now = observation.observed_ms;
     let (mut output, work) = owner
         .begin_update(observation)
-        .map_err(|cause| birdman_game_app::technical_error_text(&cause))?;
+        .map_err(|cause| birdman_game_runtime::technical_error_text(&cause))?;
     let earlier = std::mem::take(&mut io.main);
     let mut immediate = VecDeque::new();
     route_controller(&mut output, &mut io, shared, &mut immediate);
@@ -412,7 +411,7 @@ fn admit_native(
         drain_controller(&mut owner, &mut io, shared, virtual_now, VecDeque::new()).err();
     let drawing = owner
         .admit_presentation(result)
-        .map_err(|cause| birdman_game_app::technical_error_text(&cause));
+        .map_err(|cause| birdman_game_runtime::technical_error_text(&cause));
     if let Some(cause) = drain_error {
         io.failure.get_or_insert(cause.clone());
         return Err(cause);
@@ -495,7 +494,7 @@ pub(crate) fn initialize(world: &mut World) {
         Err(cause) => {
             error!(
                 "Native application initialization: {}",
-                birdman_game_app::technical_error_text(&cause)
+                birdman_game_runtime::technical_error_text(&cause)
             );
             world.write_message(AppExit::error());
         }

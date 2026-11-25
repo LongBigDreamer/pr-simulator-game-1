@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use bevy::render::renderer::{RenderDevice, RenderInstance};
 use bevy_mod_openxr::{resources::OxrFrameWaiter, session::OxrSession};
-use birdman_game_app::application::XrVisibility;
 use birdman_game_presentation::{camera, xr::*};
+use birdman_game_runtime::XrVisibility;
 use birdman_game_runtime::{ApplicationInput, ApplicationXrFrameObservation, DisplayCompletion};
 use std::{sync::mpsc, thread, time::Duration};
 
