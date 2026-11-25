@@ -17,7 +17,9 @@ use std::{
 };
 
 #[derive(Resource)]
-pub(crate) struct NativeStorageResource(pub(crate) birdman_game_host::storage_io::NativeStorage);
+pub(crate) struct NativeStorageResource(
+    pub(crate) birdman_game_native_io::storage_io::NativeStorage,
+);
 
 #[derive(Clone, Resource)]
 pub(crate) struct NativeRuntime(Arc<Mutex<ApplicationRuntime>>);
@@ -34,7 +36,7 @@ impl NativeBuffers {
 }
 
 #[derive(Resource)]
-struct NativeNetworking(Mutex<birdman_game_host::network_io::NativeNetworkIo>);
+struct NativeNetworking(Mutex<birdman_game_native_io::network_io::NativeNetworkIo>);
 impl Drop for NativeNetworking {
     fn drop(&mut self) {
         if let Err(cause) = self
@@ -117,14 +119,14 @@ impl NativeRuntime {
 const MAX_MAIN_CONTINUATIONS: usize = 64;
 
 struct ControllerState {
-    transport: birdman_game_host::controller_io::NativeControllerIo,
+    transport: birdman_game_native_io::controller_io::NativeControllerIo,
     wakes: BTreeMap<u32, f64>,
     main: VecDeque<ApplicationOutput>,
     failure: Option<String>,
 }
 struct ControllerShared {
     state: Mutex<ControllerState>,
-    signal: Arc<birdman_game_host::controller_io::NativeIoSignal>,
+    signal: Arc<birdman_game_native_io::controller_io::NativeIoSignal>,
     stopping: AtomicBool,
     epoch: Instant,
     actual_clock: bool,
@@ -135,10 +137,10 @@ struct ControllerDriver {
 }
 impl ControllerDriver {
     fn start(runtime: NativeRuntime, epoch: Instant, actual_clock: bool) -> Result<Self, String> {
-        let signal = Arc::new(birdman_game_host::controller_io::NativeIoSignal::default());
+        let signal = Arc::new(birdman_game_native_io::controller_io::NativeIoSignal::default());
         let shared = Arc::new(ControllerShared {
             state: Mutex::new(ControllerState {
-                transport: birdman_game_host::controller_io::NativeControllerIo::new(
+                transport: birdman_game_native_io::controller_io::NativeControllerIo::new(
                     epoch,
                     signal.clone(),
                 ),
@@ -769,7 +771,7 @@ fn apply_output(
                     .shared
                     .signal
                     .clone();
-                birdman_game_host::network_io::NativeNetworkIo::new(signal).map(|network| {
+                birdman_game_native_io::network_io::NativeNetworkIo::new(signal).map(|network| {
                     world.insert_resource(NativeNetworking(Mutex::new(network)));
                 })
             } else {

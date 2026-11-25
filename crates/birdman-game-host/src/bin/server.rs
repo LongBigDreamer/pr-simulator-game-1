@@ -1,10 +1,8 @@
 //! Native management entry point; early CLI executes before assets or graphics.
 
 fn main() {
-    use birdman_game_host::{
-        DECLARED_SOURCE_SHA,
-        server_cli::{HELP, ServerInvocation, parse},
-    };
+    use birdman_game_host::DECLARED_SOURCE_SHA;
+    use birdman_game_native_io::server_cli::{HELP, ServerInvocation, parse};
     let result = match parse(std::env::args().skip(1)) {
         Ok(ServerInvocation::Help) => {
             print!("{HELP}");

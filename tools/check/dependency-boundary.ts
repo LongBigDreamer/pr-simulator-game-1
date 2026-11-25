@@ -15,7 +15,8 @@ const allowed = new Map<string, readonly string[]>([
   ["birdman-game-runtime", ["birdman-game-app", "birdman-game-content", "birdman-game-core", "birdman-game-format", "birdman-game-presentation", "birdman-game-scene", "serde", "serde_json", "sha2", "time", "url"]],
   ["birdman-game-presentation", ["birdman-game-app", "birdman-game-core", "birdman-game-format", "serde", "serde_json", "time", "unicode-width"]],
   ["birdman-game-scene", ["birdman-game-app", "birdman-game-content", "birdman-game-core", "birdman-game-format", "serde", "serde_json", "sha2", "earcut"]],
-  ["birdman-game-host", ["birdman-game-app", "birdman-game-format", "birdman-game-presentation", "birdman-game-runtime", "serde", "serde_json", "sha2", "url"]],
+  ["birdman-game-host", ["birdman-game-native-io", "birdman-game-runtime"]],
+  ["birdman-game-native-io", ["birdman-game-app", "birdman-game-format", "birdman-game-presentation", "birdman-game-runtime", "serde", "serde_json", "sha2", "url"]],
   ["birdman-game-bevy", ["birdman-game-core", "birdman-game-presentation", "birdman-game-runtime", "bevy", "serde", "serde_json"]]
 ]);
 
@@ -77,7 +78,7 @@ function isControllerExecutionDependency(crate: string, dependency: Record<strin
     && features.every(feature => enabled.includes(feature));
 }
 
-// OS execution, storage, HTTP and WebSocket dependencies belong to the Host adapter.
+// OS execution, storage, HTTP and WebSocket dependencies belong to the Native I/O adapter.
 const hostIoDependencies = new Map<string, readonly [string, boolean, boolean, readonly string[]]>([
   ["axum", ["=0.8.9", false, false, ["http1", "tokio", "ws", "json"]]],
   ["axum-server", ["=0.8.0", false, false, ["tls-rustls-no-provider"]]],
@@ -99,7 +100,9 @@ const hostIoDependencies = new Map<string, readonly [string, boolean, boolean, r
 
 function isHostIoDependency(crate: string, dependency: Record<string, unknown>): boolean {
   const features = dependency.features;
-  const expected = crate === "birdman-game-host" && typeof dependency.name === "string"
+  const expected = (crate === "birdman-game-native-io"
+    || crate === "birdman-game-host" && dependency.name === "eframe")
+    && typeof dependency.name === "string"
     ? hostIoDependencies.get(dependency.name) : undefined;
   return expected !== undefined && dependency.req === expected[0]
     && dependency.kind === null && dependency.target === null
@@ -114,7 +117,7 @@ function isNativeHostTransportDependency(crate: string, dependency: Record<strin
   if (crate !== "birdman-game-bevy" || dependency.target !== NATIVE_SCREEN_TARGET
     || dependency.kind !== null || dependency.rename !== null || dependency.optional !== false
     || !Array.isArray(dependency.features)) return false;
-  if (dependency.name === "birdman-game-host") {
+  if (dependency.name === "birdman-game-native-io") {
     return typeof dependency.path === "string" && dependency.source === null
       && dependency.uses_default_features === true && dependency.features.length === 0;
   }
@@ -125,8 +128,10 @@ function isNativeHostTransportDependency(crate: string, dependency: Record<strin
 }
 
 function isHostTestDependency(crate: string, dependency: Record<string, unknown>): boolean {
-  return crate === "birdman-game-host" && dependency.name === "birdman-game-core"
-    && dependency.kind === "dev" && dependency.target === null && dependency.optional === false;
+  return dependency.kind === "dev" && dependency.target === null && dependency.optional === false
+    && (crate === "birdman-game-native-io" && dependency.name === "birdman-game-core"
+      || crate === "birdman-game-host" && typeof dependency.name === "string"
+      && ["birdman-game-app", "birdman-game-presentation", "serde", "serde_json", "sha2", "tokio"].includes(dependency.name));
 }
 
 function isNativeGpuIoDependency(crate: string, dependency: Record<string, unknown>): boolean {

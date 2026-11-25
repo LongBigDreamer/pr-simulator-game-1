@@ -35,7 +35,8 @@ adapter・runtime・presentation・scene・app・contentは責務に応じて下
 | `birdman-game-presentation` | 共有UI・camera・XR layout・適応画質の方針と、live・prepared・記録状態からの描画poseの直接導出 |
 | `birdman-game-scene` | contentから導出する機体・地形mesh、水面・天空・画像の描画資産生成 |
 | `birdman-game-runtime` | app・presentation・sceneを束ねる単一application owner、入力・frame進行・XR・記録I/O・資源準備と完了認可、最終描画データとprimitive I/O要求の出力 |
-| `birdman-game-host` | Native OSの保存・controller・timer・HTTP/WebSocket I/O、同版Web配布物の検証と配信、共通管理snapshot・command。Bevyと管理アプリが再用する |
+| `birdman-game-native-io` | Native OSの保存・controller・timer・HTTP/WebSocket I/O、同版Web配布物の検証と配信、共通管理snapshot・command。Bevyと管理アプリが再用する |
+| `birdman-game-host` | Nativeサーバー管理アプリと配布元のprovenance宣言 |
 | `birdman-game-wasm` | JavaScript ABI、入力のdecode、共有処理の呼出し、DTOのencode |
 | `birdman-game-cli` | CLI/WASIのI/O、offline検査・出力・計測入口 |
 | `birdman-game-bevy` | nativeウィンドウ、ECS・入力・時刻、共有Viewの投影、GPU資源 |

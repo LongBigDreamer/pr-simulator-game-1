@@ -3,7 +3,7 @@
 use super::NativeFont;
 use bevy::ecs as bevy_ecs;
 use bevy::prelude::*;
-use birdman_game_host::{
+use birdman_game_native_io::{
     server_cli::ServerOptions,
     service::{HostListenConfig, HostManagementCommand, HostPeer, HostService, HostServiceHandle},
 };

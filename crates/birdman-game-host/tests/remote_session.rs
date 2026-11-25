@@ -1,6 +1,6 @@
 //! Actual HTTP/WebSocket software consumers; this test does not establish GPU rendering.
 use birdman_game_app::application::{ApplicationSession, SessionCommand};
-use birdman_game_host::{
+use birdman_game_native_io::{
     controller_io::NativeIoSignal,
     network_io::NativeNetworkIo,
     service::{HostListenConfig, HostManagementCommand, HostService, HostServiceHandle},
@@ -751,7 +751,7 @@ fn shared_host_scopes_two_actual_native_connections_and_software_buffers() {
     assert_eq!(handle.snapshot().application.peer_limit, config.peer_limit);
     let admission_deadline = Instant::now() + Duration::from_secs(4);
     let receive_peer = |mut reply: tokio::sync::oneshot::Receiver<
-        Result<birdman_game_host::service::HostPeer, String>,
+        Result<birdman_game_native_io::service::HostPeer, String>,
     >| {
         loop {
             match reply.try_recv() {
