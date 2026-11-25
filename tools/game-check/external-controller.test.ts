@@ -45,7 +45,7 @@ it("runs the same real controller bytes and accepted flight to termination on Na
   expect(native.stdout).toMatch(/test result: ok\. 1 passed; 0 failed; 0 ignored;/u);
   const runner = resolve(cargoEnv.CARGO_TARGET_DIR, "release",
     `controller-sample-stdio${process.platform === "win32" ? ".exe" : ""}`);
-  const sitl = run(["test", "-p", "birdman-game-host", "--lib", "--locked",
+  const sitl = run(["test", "-p", "birdman-game-native-io", "--lib", "--locked",
     "controller_io::tests::actual_stdio_sample_matches_reference_through_natural_contact",
     "--", "--ignored", "--exact"], { ...cargoEnv,
     BIRDMAN_CONTROLLER_SITL_PROGRAM: runner, BIRDMAN_CONTROLLER_REFERENCE_PATH: referencePath });

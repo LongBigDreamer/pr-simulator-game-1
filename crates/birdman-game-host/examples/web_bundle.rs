@@ -1,6 +1,6 @@
 //! Prepares the same fixed-source Web bundle used by all Native packages.
 
-use birdman_game_host::web_distribution::write_web_bundle_manifest;
+use birdman_game_native_io::web_distribution::write_web_bundle_manifest;
 use birdman_game_runtime::APPLICATION_CONTRACT_SHA256;
 use std::{error::Error, path::PathBuf, process::Command};
 

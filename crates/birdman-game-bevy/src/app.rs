@@ -204,12 +204,14 @@ pub(super) fn run() -> Result<(), Box<dyn Error>> {
     verification.validate()?;
     let directory = export_directory.unwrap_or(std::env::current_dir()?.join("flight-logs"));
     #[cfg(feature = "verify-harness")]
-    let keyboard_directory = verification
-        .keyboard_config_directory()
-        .map_or_else(birdman_game_host::storage_io::keyboard_config_directory, Ok);
+    let keyboard_directory = verification.keyboard_config_directory().map_or_else(
+        birdman_game_native_io::storage_io::keyboard_config_directory,
+        Ok,
+    );
     #[cfg(not(feature = "verify-harness"))]
-    let keyboard_directory = birdman_game_host::storage_io::keyboard_config_directory();
-    let storage = birdman_game_host::storage_io::NativeStorage::new(directory, keyboard_directory)?;
+    let keyboard_directory = birdman_game_native_io::storage_io::keyboard_config_directory();
+    let storage =
+        birdman_game_native_io::storage_io::NativeStorage::new(directory, keyboard_directory)?;
     let font_bytes = match font_path {
         Some(path) => std::fs::read(&path).map_err(|error| {
             format!("指定した日本語fontを読めない: {} ({error})", path.display())
@@ -256,7 +258,7 @@ pub(super) fn run() -> Result<(), Box<dyn Error>> {
         let package = executable
             .parent()
             .ok_or("Native executable has no parent directory")?;
-        let options = birdman_game_host::server_cli::ServerOptions {
+        let options = birdman_game_native_io::server_cli::ServerOptions {
             peer_limit: host_peer_limit
                 .unwrap_or(birdman_game_runtime::APPLICATION_DEFAULT_PEER_LIMIT),
             bind,

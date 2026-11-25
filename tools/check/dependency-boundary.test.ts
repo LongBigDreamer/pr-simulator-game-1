@@ -368,15 +368,15 @@ describe("Cargo dependency boundary", () => {
   );
 
   it("keeps native engine and shared session dependencies outside core and format", () => {
-    const host = { name: "birdman-game-host", kind: null, target: NATIVE_SCREEN_TARGET,
-      path: "/workspace/crates/birdman-game-host", source: null, rename: null,
+    const host = { name: "birdman-game-native-io", kind: null, target: NATIVE_SCREEN_TARGET,
+      path: "/workspace/crates/birdman-game-native-io", source: null, rename: null,
       optional: false, uses_default_features: true, features: [] };
     const transport = { ...nativeTextDependency, name: "tokio", req: "=1.53.2", features: ["sync"] };
     const executor = { ...transport, target: null,
       features: ["rt-multi-thread", "net", "process", "io-util", "sync", "time", "macros"] };
     expect(() => { assertDependencyBoundary([
       { name: "birdman-game-bevy", dependencies: [host, transport] },
-      { name: "birdman-game-host", dependencies: [executor] }
+      { name: "birdman-game-native-io", dependencies: [executor] }
     ]); }).not.toThrow();
     for (const name of ["birdman-game-core", "birdman-game-app", "birdman-game-runtime", "birdman-game-wasm"]) {
       for (const dependency of [host, transport, executor]) {
@@ -388,7 +388,7 @@ describe("Cargo dependency boundary", () => {
     ]); }).toThrow();
     for (const difference of [{ req: "^1.53.2" }, { uses_default_features: true }, { features: ["full"] }]) {
       expect(() => { assertDependencyBoundary([
-        { name: "birdman-game-host", dependencies: [{ ...executor, ...difference }] }
+        { name: "birdman-game-native-io", dependencies: [{ ...executor, ...difference }] }
       ]); }).toThrow();
     }
     for (const [name, req, features] of [

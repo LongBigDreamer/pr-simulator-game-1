@@ -1,6 +1,6 @@
 //! Native administration using the same typed host commands as the Bevy frontend.
 
-use crate::{
+use birdman_game_native_io::{
     server_cli::ServerOptions,
     service::{HostListenConfig, HostManagementCommand, HostService, HostServiceHandle},
 };

@@ -1723,7 +1723,7 @@ dependencies = [
  "bevy_mod_openxr",
  "bevy_mod_xr",
  "birdman-game-core",
- "birdman-game-host",
+ "birdman-game-native-io",
  "birdman-game-presentation",
  "birdman-game-runtime",
  "openxr",
@@ -1782,6 +1782,15 @@ dependencies = [
 name = "birdman-game-host"
 version = "0.2.0"
 dependencies = [
+ "birdman-game-native-io",
+ "birdman-game-runtime",
+ "eframe",
+]
+
+[[package]]
+name = "birdman-game-native-io"
+version = "0.2.0"
+dependencies = [
  "axum",
  "axum-server",
  "birdman-game-app",
@@ -1790,7 +1799,6 @@ dependencies = [
  "birdman-game-presentation",
  "birdman-game-runtime",
  "bytes",
- "eframe",
  "futures-util",
  "http-body-util",
  "hyper",
