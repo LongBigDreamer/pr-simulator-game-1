@@ -454,6 +454,91 @@ fn collect_polar_issues(polar: &AircraftPolarDocument, issues: &mut Vec<Aircraft
             );
         }
     }
+    if polar.height_levels.len() > MAX_AIRCRAFT_POLAR_HEIGHT_LEVELS {
+        issue(
+            issues,
+            C,
+            "/polar/height_levels",
+            polar.height_levels.len(),
+            "at most 16 height levels",
+        );
+    }
+    for (level_index, level) in polar.height_levels.iter().enumerate() {
+        number(
+            issues,
+            C,
+            &format!("/polar/height_levels/{level_index}/height_ratio"),
+            level.height_ratio,
+            0.0,
+            true,
+        );
+        if level.height_ratio.is_finite() && level.height_ratio > 1.0 {
+            issue(
+                issues,
+                C,
+                &format!("/polar/height_levels/{level_index}/height_ratio"),
+                level.height_ratio,
+                "finite height ratio in (0, 1]",
+            );
+        }
+        if level.rows.len() != polar.rows.len() {
+            issue(
+                issues,
+                C,
+                &format!("/polar/height_levels/{level_index}/rows"),
+                level.rows.len(),
+                "same row count as /polar/rows",
+            );
+        }
+        for (index, row) in level.rows.iter().enumerate() {
+            for (name, value, minimum) in [
+                ("alpha_rad", row.alpha_rad, f64::NEG_INFINITY),
+                ("lift", row.lift, f64::NEG_INFINITY),
+                ("induced_drag", row.induced_drag, 0.0),
+                ("profile_drag", row.profile_drag, 0.0),
+                ("side_force", row.side_force, f64::NEG_INFINITY),
+                ("roll_moment", row.roll_moment, f64::NEG_INFINITY),
+                ("pitch_moment", row.pitch_moment, f64::NEG_INFINITY),
+                ("yaw_moment", row.yaw_moment, f64::NEG_INFINITY),
+            ] {
+                number(
+                    issues,
+                    C,
+                    &format!("/polar/height_levels/{level_index}/rows/{index}/{name}"),
+                    value,
+                    minimum,
+                    false,
+                );
+            }
+            if let Some(base) = polar.rows.get(index)
+                && row.alpha_rad.is_finite()
+                && base.alpha_rad.is_finite()
+                && row.alpha_rad != base.alpha_rad
+            {
+                issue(
+                    issues,
+                    C,
+                    &format!("/polar/height_levels/{level_index}/rows/{index}/alpha_rad"),
+                    row.alpha_rad,
+                    "same angle of attack as the base table row",
+                );
+            }
+        }
+    }
+    for (index, pair) in polar.height_levels.windows(2).enumerate() {
+        if pair[0].height_ratio.is_finite()
+            && pair[1].height_ratio.is_finite()
+            && pair[0].height_ratio >= pair[1].height_ratio
+        {
+            issue(
+                issues,
+                C,
+                &format!("/polar/height_levels/{}/height_ratio", index + 1),
+                pair[1].height_ratio,
+                "strictly increasing height ratio",
+            );
+        }
+    }
 }
 
 fn collect_surface_issues(

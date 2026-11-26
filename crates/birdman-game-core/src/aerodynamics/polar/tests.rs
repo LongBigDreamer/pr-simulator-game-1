@@ -832,3 +832,46 @@ fn surface_effect_scales_only_the_induced_drag_column() {
     assert!(low_force[0] > high_force[0]);
     assert_eq!(low_force[2], high_force[2]);
 }
+#[test]
+fn coefficients_at_height_blends_levels_toward_free_air() {
+    let base_rows = [
+        row(-0.1, [0.0, 0.02, 0.03, 0.0, 0.0, 0.0, 0.0]),
+        row(0.1, [1.0, 0.02, 0.03, 0.0, 0.0, 0.0, 0.0]),
+    ];
+    let level_rows = [
+        row(-0.1, [1.0, 0.02, 0.03, 0.0, 0.0, 0.0, 0.0]),
+        row(0.1, [2.0, 0.02, 0.03, 0.0, 0.0, 0.0, 0.0]),
+    ];
+    let levels = [StaticPolarHeightLevel::try_new(0.1, &level_rows).unwrap()];
+    let table = polar(&base_rows, BodyPoint::origin(), PolarMomentAxes::BodyFrd)
+        .with_height_levels(&levels)
+        .unwrap();
+    // At alpha 0 the base lift is 0.5 and the level lift is 1.5.
+    near(
+        table.coefficients_at_height(0.0, 0.05).unwrap().lift(),
+        1.5,
+        1.0e-12,
+    );
+    near(
+        table.coefficients_at_height(0.0, 0.1).unwrap().lift(),
+        1.5,
+        1.0e-12,
+    );
+    near(
+        table.coefficients_at_height(0.0, 0.55).unwrap().lift(),
+        1.0,
+        1.0e-12,
+    );
+    near(
+        table.coefficients_at_height(0.0, 1.0).unwrap().lift(),
+        0.5,
+        1.0e-12,
+    );
+    // Without levels, the height ratio is ignored.
+    let plain = polar(&base_rows, BodyPoint::origin(), PolarMomentAxes::BodyFrd);
+    near(
+        plain.coefficients_at_height(0.0, 0.1).unwrap().lift(),
+        0.5,
+        1.0e-12,
+    );
+}

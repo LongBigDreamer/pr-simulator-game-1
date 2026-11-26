@@ -10,8 +10,8 @@ pub use hybrid::{
 };
 pub use polar::{
     AerodynamicLoadProvider, PolarAnalysisMethod, PolarMomentAxes, StaticPolar,
-    StaticPolarCoefficients, StaticPolarEvaluation, StaticPolarLoad, StaticPolarMetadata,
-    StaticPolarRow,
+    StaticPolarCoefficients, StaticPolarEvaluation, StaticPolarHeightLevel, StaticPolarLoad,
+    StaticPolarMetadata, StaticPolarRow,
 };
 
 /// A proper rotation from one element's local axes into the aircraft body axes.

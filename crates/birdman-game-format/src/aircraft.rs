@@ -20,6 +20,8 @@ pub const MAX_AIRCRAFT_JSON_BYTES: usize = 256 * 1024;
 pub const MAX_AIRCRAFT_STATIONS: usize = 128;
 /// Maximum full-aircraft polar row count.
 pub const MAX_AIRCRAFT_POLAR_ROWS: usize = 128;
+/// Maximum number of height levels in the full-aircraft polar.
+pub const MAX_AIRCRAFT_POLAR_HEIGHT_LEVELS: usize = 16;
 /// Maximum total number of structural tubes and foam parts derived from one document.
 pub const MAX_AIRCRAFT_MEMBERS: usize = 512;
 
@@ -238,6 +240,17 @@ pub struct AircraftPolarRowDocument {
     pub yaw_moment: f64,
 }
 
+/// One height slice of a full-aircraft static table, at a fixed height ratio.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct AircraftPolarHeightLevelDocument {
+    /// Height above the surface divided by the reference span (h / b).
+    pub height_ratio: f64,
+    /// Coefficient rows at the same angle-of-attack knots as the base table.
+    pub rows: Vec<AircraftPolarRowDocument>,
+}
+
 /// Complete-aircraft static table and its fixed reference convention.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -250,7 +263,12 @@ pub struct AircraftPolarDocument {
     /// Fixed point about which tabulated moments are supplied, in FRD metres.
     pub reference_point_frd_m: [f64; 3],
     /// Increasing angle-of-attack rows covering the requested trim interval.
+    /// These rows are the free-air table.
     pub rows: Vec<AircraftPolarRowDocument>,
+    /// Optional height slices for surface effect, in increasing height ratio.
+    /// Empty when the table carries no height dependence.
+    #[serde(default)]
+    pub height_levels: Vec<AircraftPolarHeightLevelDocument>,
 }
 
 /// One cockpit shell station, ordered from nose to aft.

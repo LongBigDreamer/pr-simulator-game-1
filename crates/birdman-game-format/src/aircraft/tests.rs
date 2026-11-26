@@ -83,6 +83,7 @@ fn valid_document() -> AircraftDocument {
                     yaw_moment: 0.0,
                 })
                 .to_vec(),
+            height_levels: Vec::new(),
         },
         structure: AircraftStructureDocument {
             main_beam_endpoints_frd_m: [[0.0; 3], [-2.0, 0.0, 0.0]],
