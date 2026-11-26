@@ -875,3 +875,32 @@ fn coefficients_at_height_blends_levels_toward_free_air() {
         1.0e-12,
     );
 }
+#[test]
+fn evaluate_body_velocity_uses_height_levels_except_induced_drag() {
+    let base_rows = [
+        row(-0.1, [0.0, 0.02, 0.03, 0.0, 0.0, 0.0, 0.0]),
+        row(0.1, [1.0, 0.02, 0.03, 0.0, 0.0, 0.0, 0.0]),
+    ];
+    let level_rows = [
+        row(-0.1, [1.0, 0.04, 0.03, 0.0, 0.0, 0.0, 0.0]),
+        row(0.1, [2.0, 0.04, 0.03, 0.0, 0.0, 0.0, 0.0]),
+    ];
+    let levels = [StaticPolarHeightLevel::try_new(0.1, &level_rows).unwrap()];
+    let table = polar(&base_rows, BodyPoint::origin(), PolarMomentAxes::BodyFrd)
+        .with_height_levels(&levels)
+        .unwrap();
+    // h / b = 0.4 / 4.0 = 0.1, exactly the level; alpha = 0 at [10, 0, 0].
+    let ground = GroundEffect::from_height_above_surface(0.4, 4.0).unwrap();
+    let evaluation = table
+        .evaluate_body_velocity(vector([10.0, 0.0, 0.0]), 1.0, ground)
+        .unwrap();
+    // Lift comes from the level: (1.0 + 2.0) / 2 = 1.5.
+    near(evaluation.coefficients().lift(), 1.5, 1.0e-12);
+    // Induced drag comes from the base table times the Wieselsberger
+    // factor, not from the level (which carries 0.04 on purpose).
+    near(
+        evaluation.coefficients().induced_drag(),
+        0.02 * ground.factor(),
+        1.0e-12,
+    );
+}
