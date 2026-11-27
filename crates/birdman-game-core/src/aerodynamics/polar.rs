@@ -495,10 +495,17 @@ impl<'a> StaticPolar<'a> {
         let beta_rad = atan2(v, h);
         let table_coefficients =
             self.coefficients_at_height(alpha_rad, ground_effect.height_ratio())?;
-        let base_coefficients = self.coefficients_at(alpha_rad)?;
+        // With height levels, the slices carry the surface effect in every
+        // column, so no factor is applied. Without levels, the factor keeps
+        // scaling the free-air induced drag as before.
+        let induced_drag = if self.height_levels.is_empty() {
+            table_coefficients.induced_drag * ground_effect.factor()
+        } else {
+            table_coefficients.induced_drag
+        };
         let coefficients = StaticPolarCoefficients::try_new(
             table_coefficients.lift,
-            base_coefficients.induced_drag * ground_effect.factor(),
+            induced_drag,
             table_coefficients.profile_drag,
             table_coefficients.side_force,
             table_coefficients.roll_moment,
